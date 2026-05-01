@@ -12,18 +12,16 @@ function goody_register_theme_menu() {
 }
 add_action('admin_menu', 'goody_register_theme_menu');
 
-function goody_register_theme_options_under_appearance() {
-    add_theme_page(
-        __('Goody Green Settings', 'goody'),
-        __('Goody Green Settings', 'goody'),
+function goody_register_theme_submenus() {
+    add_submenu_page(
+        'goody-theme',
+        __('Goody Green Theme Settings', 'goody'),
+        __('Theme Settings', 'goody'),
         'edit_theme_options',
-        'goody-theme-appearance',
+        'goody-theme',
         'goody_render_theme_options_page'
     );
-}
-add_action('admin_menu', 'goody_register_theme_options_under_appearance');
 
-function goody_register_theme_submenus() {
     add_submenu_page(
         'goody-theme',
         __('Form Submissions', 'goody'),
