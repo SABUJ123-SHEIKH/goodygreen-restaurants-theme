@@ -1,0 +1,32 @@
+.empty-state,
+.embed-card,
+.entry-content { padding: 1.2rem; }
+.text-link { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--color-primary); font-weight: 700; }
+.text-link svg { width: 16px; height: 16px; fill: currentColor; }
+.meta { color: var(--color-muted); }
+.form-notice {
+  margin: 0 0 0.9rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(163, 219, 63, 0.28);
+  background: rgba(163, 219, 63, 0.1);
+  color: var(--color-text);
+}
+.screen-reader-text {
+  border: 0;
+  clip: rect(1px, 1px, 1px, 1px);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute !important;
+  width: 1px;
+  word-wrap: normal !important;
+}
+.goody-repeater { display: grid; gap: 0.5rem; margin-bottom: 0.6rem; }
+.goody-repeater-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto auto; gap: 0.5rem; align-items: center; }
+.local-seo-text { opacity: 0.85; }
+@media (max-width: 782px) {
+  .goody-repeater-row { grid-template-columns: 1fr; }
+}

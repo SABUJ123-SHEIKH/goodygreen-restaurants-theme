@@ -1,0 +1,10 @@
+.order-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.order-card { padding: 1.2rem; }
+.delivery-links { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.embed-card { margin-top: 0.9rem; }
+@media (max-width: 1024px) {
+  .order-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 782px) {
+  .order-grid { grid-template-columns: 1fr; }
+}

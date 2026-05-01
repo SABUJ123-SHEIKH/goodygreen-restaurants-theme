@@ -1,0 +1,10 @@
+{
+  "name": "goody-green-theme",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "minify:css": "npx --yes clean-css-cli -o assets/css/main.min.css assets/css/main.css && npx --yes clean-css-cli -o assets/css/reservation.min.css assets/css/reservation.css && npx --yes clean-css-cli -o assets/css/admin.min.css assets/css/admin.css",
+    "minify:js": "npx --yes terser assets/js/main.js -c -m -o assets/js/main.min.js && npx --yes terser assets/js/reservation.js -c -m -o assets/js/reservation.min.js && npx --yes terser assets/js/admin.js -c -m -o assets/js/admin.min.js",
+    "build:assets": "npm run minify:css && npm run minify:js"
+  }
+}

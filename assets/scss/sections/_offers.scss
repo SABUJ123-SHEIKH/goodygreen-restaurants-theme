@@ -1,0 +1,112 @@
+.offer-card {
+  position: relative;
+  isolation: isolate;
+  border-radius: 14px;
+  border: 1px solid rgba(132, 173, 143, 0.32);
+  background:
+    radial-gradient(115% 90% at 95% 0%, rgba(232, 181, 84, 0.22), transparent 58%),
+    linear-gradient(170deg, rgba(14, 38, 29, 0.97), rgba(5, 14, 10, 0.98));
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.34);
+  transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
+.offer-card::before {
+  content: '';
+  position: absolute;
+  top: 0.7rem;
+  left: 0.7rem;
+  width: 46px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd86a, rgba(255, 216, 106, 0));
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.offer-card:hover {
+  transform: translateY(-6px);
+  border-color: rgba(250, 213, 115, 0.52);
+  box-shadow: 0 30px 52px rgba(0, 0, 0, 0.4);
+}
+
+.offer-card__image {
+  display: block;
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(157, 188, 165, 0.24);
+  background: #0d2218;
+}
+
+.offer-card__image::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(6, 14, 9, 0) 28%, rgba(6, 14, 9, 0.82) 100%);
+  pointer-events: none;
+}
+
+.offer-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.offer-card:hover .offer-card__image img {
+  transform: scale(1.07);
+}
+
+.offer-card__content {
+  padding: 1rem;
+  display: grid;
+  gap: 0.64rem;
+}
+
+.offer-card__content h3 {
+  margin: 0;
+  font-size: clamp(0.98rem, 1vw + 0.54rem, 1.12rem);
+  line-height: 1.28;
+}
+
+.offer-card__content p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.56;
+  color: #bfd0c4;
+}
+
+.offer-card .badge {
+  border-color: rgba(255, 215, 123, 0.4);
+  background: rgba(255, 201, 82, 0.14);
+  color: #ffd676;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.offer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.34rem;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+
+.offer-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 171, 147, 0.28);
+  background: rgba(8, 18, 13, 0.56);
+  color: #d2dfd4;
+}
+
+.offer-card .text-link {
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

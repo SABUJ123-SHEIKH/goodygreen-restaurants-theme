@@ -1,0 +1,63 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 54px;
+  padding: 0.9rem 1.55rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: linear-gradient(180deg, #82d364 0%, #5da846 100%);
+  color: #08140d;
+  font-size: 0.96rem;
+  font-weight: 700;
+  box-shadow: 0 14px 28px rgba(84, 146, 63, 0.18);
+}
+
+.button:hover {
+  background: linear-gradient(180deg, #90dc74 0%, #67b34f 100%);
+  color: #08140d;
+  transform: translateY(-1px);
+}
+
+.button svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.button__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.button--ghost,
+.button--outline {
+  background: rgba(7, 18, 13, 0.68);
+  color: var(--color-text);
+  border-color: rgba(119, 156, 108, 0.42);
+  box-shadow: none;
+}
+
+.button--ghost:hover,
+.button--outline:hover {
+  background: rgba(11, 24, 18, 0.9);
+  color: var(--color-text);
+  border-color: rgba(137, 191, 116, 0.6);
+}
+
+.button--small {
+  min-height: 46px;
+  padding: 0.72rem 1.3rem;
+  font-size: 0.92rem;
+}
+
+.button--header { padding-inline: 1.5rem; }
+
+.button-group {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}

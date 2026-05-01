@@ -1,0 +1,78 @@
+{
+  "menu_items": [
+    {
+      "title": "Family Beef Platter",
+      "price": 2450,
+      "unit_type": "person",
+      "unit_label": "person",
+      "min_qty": 2,
+      "step_qty": 1,
+      "capacity_unit": "person",
+      "capacity_value": 1,
+      "addons": [
+        { "name": "Extra Sauce", "price": 120 },
+        { "name": "Bread Basket", "price": 180 }
+      ]
+    },
+    {
+      "title": "Raw Meat KG Pack",
+      "price": 980,
+      "unit_type": "kg",
+      "unit_label": "kg",
+      "min_qty": 1,
+      "step_qty": 0.5,
+      "capacity_unit": "kg",
+      "capacity_value": 1,
+      "track_stock": true,
+      "stock_qty": 18,
+      "addons": [
+        { "name": "Spice Rub", "price": 90 },
+        { "name": "Extra Marinade", "price": 110 }
+      ]
+    },
+    {
+      "title": "Whole Mutton Roast",
+      "price": 12500,
+      "unit_type": "whole",
+      "unit_label": "whole",
+      "min_qty": 1,
+      "step_qty": 1,
+      "capacity_unit": "person",
+      "capacity_value": 8,
+      "track_stock": true,
+      "stock_qty": 4,
+      "addons": [
+        { "name": "Chef Carving Service", "price": 800 }
+      ]
+    }
+  ],
+  "booking_slots": [
+    { "time": "12:00", "label": "12:00 PM", "capacity_persons": 25, "capacity_kg": 12, "order_types": "dine_in,pickup,delivery", "cutoff_minutes": 90 },
+    { "time": "15:00", "label": "3:00 PM", "capacity_persons": 20, "capacity_kg": 10, "order_types": "pickup,delivery", "cutoff_minutes": 90 },
+    { "time": "19:00", "label": "7:00 PM", "capacity_persons": 30, "capacity_kg": 16, "order_types": "dine_in,pickup,delivery", "cutoff_minutes": 120 },
+    { "time": "21:00", "label": "9:00 PM", "capacity_persons": 18, "capacity_kg": 8, "order_types": "dine_in,pickup", "cutoff_minutes": 120 }
+  ],
+  "delivery_zones": [
+    {
+      "name": "Zone A - Gulshan",
+      "areas": ["Gulshan 1", "Gulshan 2", "Banani"],
+      "charge": 120,
+      "free_limit": 4000,
+      "min_order": 1500
+    },
+    {
+      "name": "Zone B - Dhanmondi",
+      "areas": ["Dhanmondi", "Lalmatia", "Kalabagan"],
+      "charge": 180,
+      "free_limit": 5000,
+      "min_order": 1800
+    },
+    {
+      "name": "Zone C - Uttara",
+      "areas": ["Uttara Sector 3", "Uttara Sector 7", "Airport Road"],
+      "charge": 220,
+      "free_limit": 6500,
+      "min_order": 2200
+    }
+  ]
+}
