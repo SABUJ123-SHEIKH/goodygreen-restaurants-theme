@@ -696,6 +696,7 @@ function goody_save_reservation_meta_boxes($post_id) {
 
     if ($post_type === 'goody_reservation' && isset($_POST['goody_reservation_status'])) {
         update_post_meta($post_id, 'goody_reservation_status', sanitize_key(wp_unslash($_POST['goody_reservation_status'])));
+        goody_sync_order_tracking_from_reservation($post_id);
     }
 }
 add_action('save_post', 'goody_save_reservation_meta_boxes');
@@ -1949,11 +1950,36 @@ function goody_render_reservation_tracking_panel($reservation) {
     $booking_date = sanitize_text_field((string) get_post_meta($reservation_id, 'goody_reservation_date', true));
     $slot_label = sanitize_text_field((string) get_post_meta($reservation_id, 'goody_reservation_slot_label', true));
     $order_type = sanitize_key((string) get_post_meta($reservation_id, 'goody_reservation_order_type', true));
+    $delivery_provider = sanitize_text_field((string) get_post_meta($reservation_id, 'goody_delivery_provider', true));
+    if ($delivery_provider === '') {
+        $delivery_provider = sanitize_text_field((string) get_post_meta($reservation_id, '_goody_delivery_provider', true));
+    }
     $payment_mode = sanitize_key((string) get_post_meta($reservation_id, 'goody_reservation_payment_mode', true));
     $total = (float) get_post_meta($reservation_id, 'goody_reservation_total', true);
+    $tracking_eta = '';
+    $tracking_note = '';
+    $linked_order_id = absint(get_post_meta($reservation_id, 'goody_wc_order_id', true));
+    if ($linked_order_id > 0 && function_exists('wc_get_order')) {
+        $linked_order = wc_get_order($linked_order_id);
+        if ($linked_order instanceof WC_Order) {
+            $tracking_eta = sanitize_text_field((string) $linked_order->get_meta('_goody_tracking_eta', true));
+            $tracking_note = sanitize_text_field((string) $linked_order->get_meta('_goody_tracking_note', true));
+        }
+    }
     $created_time = goody_format_tracking_datetime(get_post_time('U', true, $reservation));
     $updated_time = goody_format_tracking_datetime(get_post_modified_time('U', true, $reservation));
     $steps = goody_get_reservation_tracking_step_definitions();
+    if ($order_type === 'dine_in') {
+        $steps['ready'] = __('Ready to Dine In', 'goody');
+    } elseif ($order_type === 'pickup') {
+        $steps['ready'] = __('Ready to Pickup', 'goody');
+    } elseif ($order_type === 'delivery') {
+        if ($delivery_provider !== '') {
+            $steps['ready'] = sprintf(__('Ready to Delivery Provider (%s)', 'goody'), $delivery_provider);
+        } else {
+            $steps['ready'] = __('Ready to Delivery Provider', 'goody');
+        }
+    }
     $current_index = goody_get_reservation_tracking_step_index($status);
     $is_cancelled = $status === 'cancelled';
     $order_types = goody_get_reservation_order_types();
@@ -1962,7 +1988,11 @@ function goody_render_reservation_tracking_panel($reservation) {
         'pending-payment' => __('Reservation request has been received.', 'goody'),
         'confirmed' => __('Reservation has been confirmed.', 'goody'),
         'preparing' => __('Kitchen is preparing your reservation order.', 'goody'),
-        'ready' => __('Reservation order is ready.', 'goody'),
+        'ready' => $order_type === 'dine_in'
+            ? __('Reservation order is ready for dine in.', 'goody')
+            : ($order_type === 'pickup'
+                ? __('Reservation order is ready for pickup.', 'goody')
+                : __('Reservation order is ready for delivery provider.', 'goody')),
         'completed' => __('Reservation has been completed.', 'goody'),
     ];
 
@@ -1981,6 +2011,12 @@ function goody_render_reservation_tracking_panel($reservation) {
             <div><span><?php esc_html_e('Payment', 'goody'); ?></span><strong><?php echo esc_html($payment_modes[$payment_mode] ?? ($payment_mode !== '' ? $payment_mode : __('Not selected', 'goody'))); ?></strong></div>
             <?php if ($total > 0) : ?>
                 <div><span><?php esc_html_e('Total', 'goody'); ?></span><strong><?php echo goody_reservation_price_html($total); ?></strong></div>
+            <?php endif; ?>
+            <?php if ($tracking_eta !== '') : ?>
+                <div><span><?php esc_html_e('ETA', 'goody'); ?></span><strong><?php echo esc_html($tracking_eta); ?></strong></div>
+            <?php endif; ?>
+            <?php if ($tracking_note !== '') : ?>
+                <div><span><?php esc_html_e('Latest Note', 'goody'); ?></span><strong><?php echo esc_html($tracking_note); ?></strong></div>
             <?php endif; ?>
         </div>
 
@@ -2525,6 +2561,7 @@ function goody_render_order_tracking_status_panel($tracking_order_id = '', $trac
     $tracking_status = trim((string) ($tracking_state['status'] ?? ''));
     $tracking_stage = trim((string) ($tracking_state['stage'] ?? ''));
     $tracking_eta = trim((string) ($tracking_state['eta'] ?? ''));
+    $tracking_note = trim((string) ($tracking_state['note'] ?? ''));
     $tracking_provider = trim((string) ($tracking_state['provider'] ?? ''));
     $tracking_consignment = trim((string) ($tracking_state['consignment_id'] ?? ''));
     if ($tracking_consignment === '') {
@@ -2539,6 +2576,22 @@ function goody_render_order_tracking_status_panel($tracking_order_id = '', $trac
             'time' => '',
             'completed' => true,
         ];
+    }
+
+    $tracking_stage_defs = goody_get_tracking_stage_definitions();
+    $tracking_stage_key = goody_normalize_tracking_stage($tracking_stage);
+    $tracking_stage_label = $tracking_stage_key !== '' && isset($tracking_stage_defs[$tracking_stage_key])
+        ? (string) $tracking_stage_defs[$tracking_stage_key]
+        : ($tracking_stage !== '' ? ucwords(str_replace(['_', '-'], ' ', $tracking_stage)) : '');
+
+    if ($tracking_provider !== '' && ! empty($tracking_steps)) {
+        foreach ($tracking_steps as &$tracking_step) {
+            if (($tracking_step['key'] ?? '') === 'with_delivery_provider') {
+                $tracking_step['label'] = sprintf(__('Delivery Provider (%s)', 'goody'), $tracking_provider);
+                break;
+            }
+        }
+        unset($tracking_step);
     }
 
     $status_page_url = get_permalink();
@@ -2585,14 +2638,26 @@ function goody_render_order_tracking_status_panel($tracking_order_id = '', $trac
                     <span class="tracking-info-label"><?php esc_html_e('Current Status', 'goody'); ?></span>
                     <strong class="tracking-info-value" data-tracking-status-value><?php echo esc_html($tracking_status !== '' ? $tracking_status : __('Waiting for update', 'goody')); ?></strong>
                 </div>
+                <?php if ($tracking_provider !== '') : ?>
+                    <div class="tracking-info-row">
+                        <span class="tracking-info-label"><?php esc_html_e('Delivery Provider', 'goody'); ?></span>
+                        <strong class="tracking-info-value" data-tracking-provider-value><?php echo esc_html($tracking_provider); ?></strong>
+                    </div>
+                <?php endif; ?>
                 <?php if ($tracking_stage !== '' || $tracking_eta !== '' || $tracking_provider !== '') : ?>
                     <div class="tracking-info-row">
                         <span class="tracking-info-label"><?php esc_html_e('Delivery Details', 'goody'); ?></span>
                         <div class="tracking-info-value tracking-info-value--stack" data-tracking-delivery-value>
                             <?php if ($tracking_provider !== '') : ?><strong><?php echo esc_html($tracking_provider); ?></strong><?php endif; ?>
-                            <?php if ($tracking_stage !== '') : ?><span><?php echo esc_html($tracking_stage); ?></span><?php endif; ?>
+                            <?php if ($tracking_stage_label !== '') : ?><span><?php echo esc_html($tracking_stage_label); ?></span><?php endif; ?>
                             <?php if ($tracking_eta !== '') : ?><span><?php echo esc_html($tracking_eta); ?></span><?php endif; ?>
                         </div>
+                    </div>
+                <?php endif; ?>
+                <?php if ($tracking_note !== '') : ?>
+                    <div class="tracking-info-row">
+                        <span class="tracking-info-label"><?php esc_html_e('Latest Note', 'goody'); ?></span>
+                        <strong class="tracking-info-value" data-tracking-note-value><?php echo esc_html($tracking_note); ?></strong>
                     </div>
                 <?php endif; ?>
             </div>
@@ -2735,6 +2800,84 @@ function goody_map_woocommerce_status_to_reservation_status($order_status) {
     return 'pending-payment';
 }
 
+function goody_map_reservation_status_to_tracking_stage($reservation_status, $order_type = 'delivery') {
+    $reservation_status = sanitize_key((string) $reservation_status);
+    $order_type = sanitize_key((string) $order_type);
+
+    if (in_array($reservation_status, ['cancelled', 'failed', 'refunded'], true)) {
+        return 'requested';
+    }
+
+    if (in_array($reservation_status, ['pending-payment', 'pending', 'requested'], true)) {
+        return 'requested';
+    }
+
+    if ($reservation_status === 'confirmed') {
+        return 'confirmed';
+    }
+
+    if (in_array($reservation_status, ['preparing', 'processing'], true)) {
+        return 'preparing';
+    }
+
+    if ($reservation_status === 'ready') {
+        return $order_type === 'delivery' ? 'with_delivery_provider' : 'ready';
+    }
+
+    if (in_array($reservation_status, ['completed', 'served'], true)) {
+        return 'completed';
+    }
+
+    return 'requested';
+}
+
+function goody_sync_order_tracking_from_reservation($reservation_id) {
+    $reservation_id = absint($reservation_id);
+    if ($reservation_id < 1 || ! function_exists('wc_get_order')) {
+        return;
+    }
+
+    $order_id = absint(get_post_meta($reservation_id, 'goody_wc_order_id', true));
+    if ($order_id < 1) {
+        return;
+    }
+
+    $order = wc_get_order($order_id);
+    if (! $order instanceof WC_Order) {
+        return;
+    }
+
+    $reservation_status = sanitize_key((string) get_post_meta($reservation_id, 'goody_reservation_status', true));
+    $order_type = sanitize_key((string) get_post_meta($reservation_id, 'goody_reservation_order_type', true));
+    if ($order_type === '') {
+        $order_type = sanitize_key((string) $order->get_meta('_goody_reservation_order_type', true));
+    }
+    if ($order_type === '') {
+        $order_type = 'delivery';
+    }
+
+    $stage = goody_map_reservation_status_to_tracking_stage($reservation_status, $order_type);
+    $defs = goody_get_tracking_stage_definitions();
+    $status_label = (string) ($defs[$stage] ?? ucfirst(str_replace('_', ' ', $stage)));
+
+    $previous_stage = goody_normalize_tracking_stage((string) $order->get_meta('_goody_tracking_stage', true));
+    $previous_status = sanitize_text_field((string) $order->get_meta('_goody_tracking_status', true));
+
+    $order->update_meta_data('_goody_tracking_stage', $stage);
+    $order->update_meta_data('_goody_tracking_status', $status_label);
+    $order->update_meta_data('_goody_tracking_manual_updates', '1');
+    $order->update_meta_data('_goody_reservation_order_type', $order_type);
+
+    if ($stage !== $previous_stage || $status_label !== $previous_status) {
+        if (function_exists('goody_append_tracking_timeline_event')) {
+            $note = sprintf(__('Auto sync from reservation status (%s / %s)', 'goody'), $reservation_status, $order_type);
+            goody_append_tracking_timeline_event($order, $stage, $status_label, $note);
+        }
+    }
+
+    $order->save();
+}
+
 function goody_sync_reservation_from_woocommerce_status($order_id, $old_status, $new_status, $order) {
     if (! $order instanceof WC_Order) {
         $order = wc_get_order($order_id);
@@ -2750,6 +2893,7 @@ function goody_sync_reservation_from_woocommerce_status($order_id, $old_status, 
 
     update_post_meta($reservation_id, 'goody_reservation_payment_status', sanitize_text_field((string) $new_status));
     update_post_meta($reservation_id, 'goody_reservation_status', goody_map_woocommerce_status_to_reservation_status($new_status));
+    goody_sync_order_tracking_from_reservation($reservation_id);
 }
 add_action('woocommerce_order_status_changed', 'goody_sync_reservation_from_woocommerce_status', 20, 4);
 

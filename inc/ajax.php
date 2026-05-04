@@ -44,14 +44,26 @@ add_action('wp_ajax_nopriv_goody_filter_menu', 'goody_ajax_filter_menu_items');
 function goody_ajax_tracking_status() {
     check_ajax_referer('goody_nonce', 'nonce');
 
-    if (goody_get_option('tracking_enabled', '0') !== '1') {
-        wp_send_json_success(goody_get_tracking_empty_state());
-    }
-
     $order_id = sanitize_text_field(wp_unslash($_POST['order_id'] ?? ''));
     $order_key = sanitize_text_field(wp_unslash($_POST['order_key'] ?? ''));
     $force_refresh = ($order_id !== '' || $order_key !== '');
+
+    if (goody_get_option('tracking_enabled', '0') !== '1' && ! $force_refresh) {
+        wp_send_json_success(goody_get_tracking_empty_state());
+    }
+
     $state = goody_get_tracking_state($force_refresh, $order_id, $order_key);
+    if (
+        $force_refresh &&
+        is_array($state) &&
+        trim((string) ($state['order_id'] ?? '')) === '' &&
+        trim((string) ($state['status'] ?? '')) === '' &&
+        trim((string) ($state['message'] ?? '')) === ''
+    ) {
+        $state['order_id'] = sanitize_text_field($order_id);
+        $state['order_key'] = sanitize_text_field($order_key);
+        $state['message'] = __('Tracking data not found for this order. Please check Order ID / key.', 'goody');
+    }
     wp_send_json_success($state);
 }
 add_action('wp_ajax_goody_tracking_status', 'goody_ajax_tracking_status');
@@ -137,37 +149,30 @@ function goody_rest_test_tracking(WP_REST_Request $request) {
 
     $timeline_all = [
         [
-            'stage' => 'accepted',
-            'status' => 'Accepted',
-            'description' => 'New order pickup requested.',
-            'time' => date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $base_timestamp + (2 * HOUR_IN_SECONDS)),
+            'stage' => 'requested',
+            'status' => 'Requested',
+            'description' => 'Order request has been received.',
+            'time' => date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $base_timestamp + (3 * HOUR_IN_SECONDS)),
             'completed' => true,
         ],
         [
-            'stage' => 'picked',
-            'status' => 'Picked',
-            'description' => 'Order assigned to rider for pickup.',
-            'time' => date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $base_timestamp + (5 * HOUR_IN_SECONDS)),
+            'stage' => 'confirmed',
+            'status' => 'Confirmed',
+            'description' => 'Order has been confirmed.',
+            'time' => date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $base_timestamp + (7 * HOUR_IN_SECONDS)),
             'completed' => true,
         ],
         [
-            'stage' => 'in_transit',
-            'status' => 'In Transit',
-            'description' => 'Order is on the way to delivery hub.',
-            'time' => date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $base_timestamp + (8 * HOUR_IN_SECONDS)),
-            'completed' => true,
-        ],
-        [
-            'stage' => 'ready_for_delivery',
-            'status' => 'Ready For Delivery',
-            'description' => 'Order has reached local delivery hub.',
+            'stage' => 'preparing',
+            'status' => 'Preparing',
+            'description' => 'Order is being prepared.',
             'time' => date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $base_timestamp + (11 * HOUR_IN_SECONDS)),
             'completed' => true,
         ],
         [
-            'stage' => 'delivered',
-            'status' => 'Delivered',
-            'description' => 'Order has been delivered to customer.',
+            'stage' => 'ready',
+            'status' => 'Ready',
+            'description' => 'Order is ready.',
             'time' => date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $base_timestamp + (14 * HOUR_IN_SECONDS)),
             'completed' => true,
         ],
@@ -178,11 +183,10 @@ function goody_rest_test_tracking(WP_REST_Request $request) {
     $current = $timeline[$index];
 
     $eta_map = [
-        'accepted' => '35-40 min',
-        'picked' => '20-25 min',
-        'in_transit' => '10-15 min',
-        'ready_for_delivery' => '5-8 min',
-        'delivered' => 'Completed',
+        'requested' => '30-35 min',
+        'confirmed' => '20-25 min',
+        'preparing' => '10-15 min',
+        'ready' => 'Ready',
     ];
 
     $tracking_url = goody_get_tracking_page_url($order_id, $order_key);

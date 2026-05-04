@@ -276,100 +276,59 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  const trackingBox = document.querySelector('[data-goody-tracking-box]');
-  if (trackingBox && window.goodyTheme && goodyTheme.ajaxUrl) {
-    const trackingText = trackingBox.querySelector('[data-goody-tracking-text]');
-    const trackingLink = trackingBox.querySelector('[data-goody-tracking-link]');
-    const baseTrackingText = String(trackingBox.getAttribute('data-tracking-base') || '').trim();
-    const strictTrackingParams = trackingBox.getAttribute('data-tracking-strict') === '1';
-    const trackingOrderParamKeys = strictTrackingParams ? [
-      'order_id',
-      'track',
-      'tracking_id',
-      'order',
-      'id',
-      'external_order_id'
-    ] : [
-      'order_id',
-      'track',
-      'tracking_id',
-      'order',
-      'id',
-      'external_order_id',
-      'reference',
-      'ref'
-    ];
+  const trackingBoxes = Array.prototype.slice.call(document.querySelectorAll('[data-goody-tracking-box]'));
+  if (trackingBoxes.length && window.goodyTheme && goodyTheme.ajaxUrl) {
     const trackingKeyParamKeys = ['key', 'order_key', 'wc_order_key'];
-    const resolveTrackingOrderId = function () {
-      try {
-        const params = new URLSearchParams(window.location.search || '');
-        for (let i = 0; i < trackingOrderParamKeys.length; i += 1) {
-          const value = String(params.get(trackingOrderParamKeys[i]) || '').trim();
-          if (value) return value;
-        }
-
-        const path = String(window.location.pathname || '');
-        const match = path.match(/\/(?:order-received|view-order|order-pay)\/(\d+)/i);
-        if (match && match[1]) {
-          return String(match[1]).trim();
-        }
-      } catch (error) {
-        return '';
-      }
-      return '';
-    };
-    const resolveTrackingOrderKey = function () {
-      try {
-        const params = new URLSearchParams(window.location.search || '');
-        for (let i = 0; i < trackingKeyParamKeys.length; i += 1) {
-          const value = String(params.get(trackingKeyParamKeys[i]) || '').trim();
-          if (value) return value;
-        }
-      } catch (error) {
-        return '';
-      }
-      return '';
-    };
-    const trackingOrderId = resolveTrackingOrderId();
-    const trackingOrderKey = resolveTrackingOrderKey();
-    const hasTrackingIdentity = Boolean(trackingOrderId || trackingOrderKey);
-    const trackingScope = trackingBox.closest('.goody-status-card, .tracking-shell, .reserve-zone') || document;
-    const trackingStageOrder = ['accepted', 'picked', 'in_transit', 'ready_for_delivery', 'delivered'];
+    const trackingStageOrder = ['requested', 'confirmed', 'preparing', 'ready', 'with_delivery_provider', 'completed'];
 
     const normalizeTrackingStage = function (value) {
       const raw = String(value || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
       const aliases = {
-        accepted: 'accepted',
-        order_received: 'accepted',
-        received: 'accepted',
-        confirmed: 'accepted',
-        pending: 'accepted',
-        on_hold: 'accepted',
-        draft: 'accepted',
-        checkout_draft: 'accepted',
-        failed: 'accepted',
-        cancelled: 'accepted',
-        refunded: 'accepted',
-        picked: 'picked',
-        pickup: 'picked',
-        picked_up: 'picked',
-        assigned: 'picked',
-        courier_assigned: 'picked',
-        in_transit: 'in_transit',
-        transit: 'in_transit',
-        on_the_way: 'in_transit',
-        shipping: 'in_transit',
-        processing: 'in_transit',
-        shipped: 'ready_for_delivery',
-        ready_for_delivery: 'ready_for_delivery',
-        out_for_delivery: 'ready_for_delivery',
-        ready: 'ready_for_delivery',
-        delivered: 'delivered',
-        complete: 'delivered',
-        completed: 'delivered'
+        requested: 'requested',
+        accepted: 'requested',
+        order_received: 'requested',
+        received: 'requested',
+        pending: 'requested',
+        on_hold: 'requested',
+        draft: 'requested',
+        checkout_draft: 'requested',
+        failed: 'requested',
+        cancelled: 'requested',
+        refunded: 'requested',
+        confirmed: 'confirmed',
+        picked: 'confirmed',
+        pickup: 'confirmed',
+        picked_up: 'confirmed',
+        assigned: 'confirmed',
+        courier_assigned: 'confirmed',
+        preparing: 'preparing',
+        in_transit: 'preparing',
+        transit: 'preparing',
+        on_the_way: 'preparing',
+        shipping: 'preparing',
+        processing: 'preparing',
+        shipped: 'preparing',
+        ready_for_delivery: 'ready',
+        out_for_delivery: 'ready',
+        ready: 'ready',
+        with_delivery_provider: 'with_delivery_provider',
+        delivery_provider: 'with_delivery_provider',
+        provider: 'with_delivery_provider',
+        delivered: 'completed',
+        complete: 'completed',
+        completed: 'completed'
       };
 
       return aliases[raw] || '';
+    };
+
+    const trackingStageLabelMap = {
+      requested: 'Requested',
+      confirmed: 'Confirmed',
+      preparing: 'Preparing',
+      ready: 'Ready',
+      with_delivery_provider: 'Delivery Provider',
+      completed: 'Completed'
     };
 
     const detectTrackingStage = function (state) {
@@ -389,34 +348,44 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       const text = String(state.status || state.message || '').toLowerCase();
-      if (text.indexOf('deliver') !== -1) return 'delivered';
-      if (text.indexOf('ready') !== -1 || text.indexOf('out for delivery') !== -1) return 'ready_for_delivery';
-      if (text.indexOf('transit') !== -1 || text.indexOf('way') !== -1 || text.indexOf('ship') !== -1) return 'in_transit';
-      if (text.indexOf('pick') !== -1 || text.indexOf('assign') !== -1 || text.indexOf('courier') !== -1) return 'picked';
-      if (text.indexOf('accept') !== -1 || text.indexOf('receiv') !== -1 || text.indexOf('confirm') !== -1 || text.indexOf('new order') !== -1) return 'accepted';
+      if (text.indexOf('deliver') !== -1) return text.indexOf('provider') !== -1 ? 'with_delivery_provider' : 'completed';
+      if (text.indexOf('ready') !== -1 || text.indexOf('out for delivery') !== -1) return 'ready';
+      if (text.indexOf('transit') !== -1 || text.indexOf('way') !== -1 || text.indexOf('ship') !== -1) return 'preparing';
+      if (text.indexOf('pick') !== -1 || text.indexOf('assign') !== -1 || text.indexOf('courier') !== -1) return 'confirmed';
+      if (text.indexOf('confirm') !== -1) return 'confirmed';
+      if (text.indexOf('accept') !== -1 || text.indexOf('receiv') !== -1 || text.indexOf('new order') !== -1) return 'requested';
+      if (text.indexOf('complete') !== -1 || text.indexOf('served') !== -1 || text.indexOf('finished') !== -1) return 'completed';
 
       return '';
     };
 
-    const updateTextNode = function (selector, value) {
-      const element = trackingScope.querySelector(selector);
+    const updateTextNode = function (scope, selector, value) {
+      const element = scope.querySelector(selector);
       const text = String(value || '').trim();
       if (element && text) {
         element.textContent = text;
       }
     };
 
-    const updateDeliveryDetails = function (state) {
-      const delivery = trackingScope.querySelector('[data-tracking-delivery-value]');
+    const updateDeliveryDetails = function (scope, state) {
+      const delivery = scope.querySelector('[data-tracking-delivery-value]');
       if (!delivery) return;
+
+      const normalizedStage = normalizeTrackingStage(state.stage || '');
+      const stageLabel = normalizedStage && trackingStageLabelMap[normalizedStage]
+        ? trackingStageLabelMap[normalizedStage]
+        : String(state.stage || '').trim();
 
       const fragments = [
         String(state.provider || '').trim(),
-        String(state.stage || '').trim(),
+        String(stageLabel || '').trim(),
         String(state.eta || '').trim()
       ].filter(Boolean);
 
-      if (!fragments.length) return;
+      if (!fragments.length) {
+        delivery.innerHTML = '';
+        return;
+      }
 
       delivery.innerHTML = '';
       fragments.forEach(function (fragment, index) {
@@ -426,14 +395,14 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     };
 
-    const updateTrackingSteps = function (state) {
+    const updateTrackingSteps = function (scope, state) {
       const currentStage = detectTrackingStage(state);
       if (!currentStage) return;
 
       const currentIndex = trackingStageOrder.indexOf(currentStage);
       if (currentIndex < 0) return;
 
-      trackingScope.querySelectorAll('[data-tracking-step]').forEach(function (step) {
+      scope.querySelectorAll('[data-tracking-step]').forEach(function (step) {
         const stepIndex = trackingStageOrder.indexOf(String(step.getAttribute('data-tracking-step') || ''));
         if (stepIndex < 0) return;
 
@@ -442,8 +411,8 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     };
 
-    const updateTrackingTimeline = function (state) {
-      const timeline = trackingScope.querySelector('[data-goody-tracking-timeline]');
+    const updateTrackingTimeline = function (scope, state) {
+      const timeline = scope.querySelector('[data-goody-tracking-timeline]');
       const events = Array.isArray(state.timeline) ? state.timeline : [];
       if (!timeline || !events.length) return;
 
@@ -489,91 +458,161 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     };
 
-    const applyTrackingState = function (state) {
-      if (!state || typeof state !== 'object') return;
-
-      if (trackingText) {
-        const message = String(state.message || '').trim();
-        const mergedText = message
-          ? (baseTrackingText ? baseTrackingText + ' | ' + message : message)
-          : baseTrackingText;
-        trackingText.textContent = mergedText;
+    const resolveTrackingOrderKey = function () {
+      try {
+        const params = new URLSearchParams(window.location.search || '');
+        for (let i = 0; i < trackingKeyParamKeys.length; i += 1) {
+          const value = String(params.get(trackingKeyParamKeys[i]) || '').trim();
+          if (value) return value;
+        }
+      } catch (error) {
+        return '';
       }
+      return '';
+    };
 
-      if (trackingLink && state.url) {
-        trackingLink.setAttribute('href', state.url);
-      } else if (trackingLink && trackingOrderId) {
+    trackingBoxes.forEach(function (trackingBox) {
+      const trackingText = trackingBox.querySelector('[data-goody-tracking-text]');
+      const trackingLink = trackingBox.querySelector('[data-goody-tracking-link]');
+      const baseTrackingText = String(trackingBox.getAttribute('data-tracking-base') || '').trim();
+      const strictTrackingParams = trackingBox.getAttribute('data-tracking-strict') === '1';
+      const trackingScope = trackingBox.closest('.goody-status-card, .tracking-shell, .reserve-zone') || trackingBox;
+      const trackingOrderInput = trackingScope.querySelector('input[name="order_id"]');
+      const trackingKeyInput = trackingScope.querySelector('input[name="key"], input[name="order_key"], input[name="wc_order_key"]');
+
+      const resolveTrackingOrderId = function () {
+        const localValue = String(trackingOrderInput && trackingOrderInput.value ? trackingOrderInput.value : '').trim();
+        if (localValue) {
+          return localValue;
+        }
+
+        const trackingOrderParamKeys = strictTrackingParams ? [
+          'order_id',
+          'track',
+          'tracking_id',
+          'order',
+          'id',
+          'external_order_id'
+        ] : [
+          'order_id',
+          'track',
+          'tracking_id',
+          'order',
+          'id',
+          'external_order_id',
+          'reference',
+          'ref'
+        ];
+
         try {
-          const url = new URL(trackingLink.getAttribute('href') || '', window.location.origin);
-          if (!url.searchParams.get('order_id')) {
-            url.searchParams.set('order_id', trackingOrderId);
+          const params = new URLSearchParams(window.location.search || '');
+          for (let i = 0; i < trackingOrderParamKeys.length; i += 1) {
+            const value = String(params.get(trackingOrderParamKeys[i]) || '').trim();
+            if (value) return value;
           }
-          if (trackingOrderKey && !url.searchParams.get('key')) {
-            url.searchParams.set('key', trackingOrderKey);
+
+          const path = String(window.location.pathname || '');
+          const match = path.match(/\/(?:order-received|view-order|order-pay)\/(\d+)/i);
+          if (match && match[1]) {
+            return String(match[1]).trim();
           }
-          trackingLink.setAttribute('href', url.toString());
         } catch (error) {
-          // Ignore malformed URL and keep existing href.
+          return '';
         }
+        return '';
+      };
+
+      const trackingOrderId = resolveTrackingOrderId();
+      const trackingOrderKey = String(trackingKeyInput && trackingKeyInput.value ? trackingKeyInput.value : '').trim() || resolveTrackingOrderKey();
+      const hasTrackingIdentity = Boolean(trackingOrderId || trackingOrderKey);
+      if (!hasTrackingIdentity) {
+        return;
       }
 
-      updateTextNode('[data-tracking-consignment-value]', state.consignment_id || state.order_id || trackingOrderId);
-      updateTextNode('[data-tracking-status-value]', state.status);
-      const copyButton = trackingScope.querySelector('.goody-track-copy');
-      const copyValue = String(state.consignment_id || state.order_id || trackingOrderId || '').trim();
-      if (copyButton && copyValue) {
-        copyButton.setAttribute('data-copy', copyValue);
-      }
-      updateDeliveryDetails(state);
-      updateTrackingSteps(state);
-      updateTrackingTimeline(state);
-    };
+      const applyTrackingState = function (state) {
+        if (!state || typeof state !== 'object') return;
 
-    const loadTrackingState = function () {
-      if (!hasTrackingIdentity) return;
-
-      const formData = new FormData();
-      formData.append('action', 'goody_tracking_status');
-      formData.append('nonce', goodyTheme.nonce || '');
-      if (trackingOrderId) {
-        formData.append('order_id', trackingOrderId);
-      }
-      if (trackingOrderKey) {
-        formData.append('order_key', trackingOrderKey);
-      }
-
-      const controller = typeof window.AbortController === 'function' ? new AbortController() : null;
-      const timeoutId = window.setTimeout(function () {
-        if (controller) {
-          controller.abort();
+        if (trackingText) {
+          const message = String(state.message || '').trim();
+          const mergedText = message
+            ? (baseTrackingText ? baseTrackingText + ' | ' + message : message)
+            : baseTrackingText;
+          trackingText.textContent = mergedText;
         }
-      }, 7000);
 
-      fetch(goodyTheme.ajaxUrl, {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: formData,
-        signal: controller ? controller.signal : undefined
-      })
-        .then(function (res) {
-          return res.json();
-        })
-        .then(function (data) {
-          if (!data || !data.success || !data.data) return;
-          applyTrackingState(data.data);
-        })
-        .catch(function () {
-          // Keep current tracking text/link when request fails.
-        })
-        .finally(function () {
-          window.clearTimeout(timeoutId);
-        });
-    };
+        if (trackingLink && state.url) {
+          trackingLink.setAttribute('href', state.url);
+        } else if (trackingLink && trackingOrderId) {
+          try {
+            const url = new URL(trackingLink.getAttribute('href') || '', window.location.origin);
+            if (!url.searchParams.get('order_id')) {
+              url.searchParams.set('order_id', trackingOrderId);
+            }
+            if (trackingOrderKey && !url.searchParams.get('key')) {
+              url.searchParams.set('key', trackingOrderKey);
+            }
+            trackingLink.setAttribute('href', url.toString());
+          } catch (error) {
+            // Ignore malformed URL and keep existing href.
+          }
+        }
 
-    if (hasTrackingIdentity) {
+        updateTextNode(trackingScope, '[data-tracking-consignment-value]', state.consignment_id || state.order_id || trackingOrderId);
+        updateTextNode(trackingScope, '[data-tracking-status-value]', state.status);
+        updateTextNode(trackingScope, '[data-tracking-provider-value]', state.provider);
+        updateTextNode(trackingScope, '[data-tracking-note-value]', state.note);
+        const copyButton = trackingScope.querySelector('.goody-track-copy');
+        const copyValue = String(state.consignment_id || state.order_id || trackingOrderId || '').trim();
+        if (copyButton && copyValue) {
+          copyButton.setAttribute('data-copy', copyValue);
+        }
+        updateDeliveryDetails(trackingScope, state);
+        updateTrackingSteps(trackingScope, state);
+        updateTrackingTimeline(trackingScope, state);
+      };
+
+      const loadTrackingState = function () {
+        const formData = new FormData();
+        formData.append('action', 'goody_tracking_status');
+        formData.append('nonce', goodyTheme.nonce || '');
+        if (trackingOrderId) {
+          formData.append('order_id', trackingOrderId);
+        }
+        if (trackingOrderKey) {
+          formData.append('order_key', trackingOrderKey);
+        }
+
+        const controller = typeof window.AbortController === 'function' ? new AbortController() : null;
+        const timeoutId = window.setTimeout(function () {
+          if (controller) {
+            controller.abort();
+          }
+        }, 7000);
+
+        fetch(goodyTheme.ajaxUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: formData,
+          signal: controller ? controller.signal : undefined
+        })
+          .then(function (res) {
+            return res.json();
+          })
+          .then(function (data) {
+            if (!data || !data.success || !data.data) return;
+            applyTrackingState(data.data);
+          })
+          .catch(function () {
+            // Keep current tracking text/link when request fails.
+          })
+          .finally(function () {
+            window.clearTimeout(timeoutId);
+          });
+      };
+
       loadTrackingState();
       setInterval(loadTrackingState, 30000);
-    }
+    });
   }
 
   document.querySelectorAll('.goody-track-copy').forEach(function (button) {

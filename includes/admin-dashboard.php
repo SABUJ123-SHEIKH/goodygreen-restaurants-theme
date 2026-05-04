@@ -226,6 +226,93 @@ function goody_handle_reservation_dashboard_actions() {
         if ($reservation_post_id > 0 && isset(goody_get_reservation_statuses()[$status])) {
             update_post_meta($reservation_post_id, 'goody_reservation_status', $status);
             goody_upsert_reservation_record($reservation_post_id);
+            if (function_exists('goody_sync_order_tracking_from_reservation')) {
+                goody_sync_order_tracking_from_reservation($reservation_post_id);
+            }
+        }
+    }
+
+    if (isset($_POST['goody_order_tracking_nonce'], $_POST['reservation_post_id'], $_POST['tracking_stage'])) {
+        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['goody_order_tracking_nonce'])), 'goody_update_order_tracking_from_dashboard')) {
+            return;
+        }
+
+        $reservation_post_id = absint($_POST['reservation_post_id']);
+        if ($reservation_post_id < 1 || ! function_exists('wc_get_order')) {
+            return;
+        }
+
+        $order_id = absint(get_post_meta($reservation_post_id, 'goody_wc_order_id', true));
+        if ($order_id < 1) {
+            return;
+        }
+
+        $order = wc_get_order($order_id);
+        if (! $order instanceof WC_Order) {
+            return;
+        }
+
+        $stage = goody_normalize_tracking_stage((string) wp_unslash($_POST['tracking_stage']));
+        if ($stage === '') {
+            return;
+        }
+
+        $stage_to_reservation_status = [
+            'requested' => 'pending-payment',
+            'confirmed' => 'confirmed',
+            'preparing' => 'preparing',
+            'ready' => 'ready',
+            'with_delivery_provider' => 'ready',
+            'completed' => 'completed',
+        ];
+        $reservation_status = isset($stage_to_reservation_status[$stage]) ? $stage_to_reservation_status[$stage] : '';
+        if ($reservation_status !== '' && isset(goody_get_reservation_statuses()[$reservation_status])) {
+            update_post_meta($reservation_post_id, 'goody_reservation_status', $reservation_status);
+            goody_upsert_reservation_record($reservation_post_id);
+        }
+
+        $stage_defs = goody_get_tracking_stage_definitions();
+        $status = isset($stage_defs[$stage]) ? (string) $stage_defs[$stage] : sanitize_text_field((string) wp_unslash($_POST['tracking_status'] ?? ''));
+        $provider = sanitize_text_field((string) wp_unslash($_POST['tracking_provider'] ?? ''));
+        $eta = sanitize_text_field((string) wp_unslash($_POST['tracking_eta'] ?? ''));
+        $note = sanitize_text_field((string) wp_unslash($_POST['tracking_note'] ?? ''));
+
+        $previous_stage = goody_normalize_tracking_stage((string) $order->get_meta('_goody_tracking_stage', true));
+        $previous_status = sanitize_text_field((string) $order->get_meta('_goody_tracking_status', true));
+        $previous_provider = sanitize_text_field((string) $order->get_meta('_goody_delivery_provider', true));
+        $previous_eta = sanitize_text_field((string) $order->get_meta('_goody_tracking_eta', true));
+
+        $order->update_meta_data('_goody_tracking_stage', $stage);
+        $order->update_meta_data('_goody_tracking_status', $status);
+        $order->update_meta_data('_goody_tracking_eta', $eta);
+        $order->update_meta_data('_goody_tracking_note', $note);
+        $order->update_meta_data('_goody_tracking_manual_updates', '1');
+
+        if ($provider !== '') {
+            $order->update_meta_data('_goody_delivery_provider', $provider);
+            $order->update_meta_data('delivery_provider', $provider);
+        }
+
+        if (
+            $stage !== $previous_stage ||
+            $status !== $previous_status ||
+            $provider !== $previous_provider ||
+            $eta !== $previous_eta ||
+            $note !== ''
+        ) {
+            $timeline_note = $note;
+            if ($provider !== '') {
+                $timeline_note = trim(($timeline_note !== '' ? $timeline_note . ' | ' : '') . sprintf(__('Provider: %s', 'goody'), $provider));
+            }
+            if (function_exists('goody_append_tracking_timeline_event')) {
+                goody_append_tracking_timeline_event($order, $stage, $status, $timeline_note);
+            }
+        }
+
+        $order->save();
+
+        if ($reservation_status !== '' && function_exists('goody_sync_order_tracking_from_reservation')) {
+            goody_sync_order_tracking_from_reservation($reservation_post_id);
         }
     }
 }
@@ -317,7 +404,6 @@ function goody_render_reservation_dashboard_page() {
                 <h2 style="margin-top:0;"><?php esc_html_e('Reservation Details', 'goody'); ?></h2>
                 <?php if ($view_post instanceof WP_Post && $view_post->post_type === 'goody_reservation') : ?>
                     <?php
-                    $reservation_status = sanitize_key((string) get_post_meta($view_post->ID, 'goody_reservation_status', true));
                     $summary_html = (string) get_post_meta($view_post->ID, 'goody_reservation_summary_html', true);
                     $order_id = absint(get_post_meta($view_post->ID, 'goody_wc_order_id', true));
                     $order_type = sanitize_key((string) get_post_meta($view_post->ID, 'goody_reservation_order_type', true));
@@ -337,17 +423,38 @@ function goody_render_reservation_dashboard_page() {
                     <?php if ($order_id > 0) : ?>
                         <p><strong><?php esc_html_e('WooCommerce Order:', 'goody'); ?></strong> <a href="<?php echo esc_url(admin_url('post.php?post=' . $order_id . '&action=edit')); ?>">#<?php echo esc_html((string) $order_id); ?></a></p>
                     <?php endif; ?>
-                    <form method="post" style="margin:16px 0;">
-                        <?php wp_nonce_field('goody_update_reservation_status', 'goody_reservation_status_nonce'); ?>
-                        <input type="hidden" name="reservation_post_id" value="<?php echo esc_attr((string) $view_post->ID); ?>">
-                        <label for="reservation_status"><strong><?php esc_html_e('Change Status', 'goody'); ?></strong></label><br>
-                        <select name="reservation_status" id="reservation_status">
-                            <?php foreach (goody_get_reservation_statuses() as $status_key => $status_label) : ?>
-                                <option value="<?php echo esc_attr($status_key); ?>" <?php selected($reservation_status, $status_key); ?>><?php echo esc_html($status_label); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <?php submit_button(__('Update Status', 'goody'), 'primary', '', false); ?>
-                    </form>
+                    <?php if ($order_id > 0 && function_exists('wc_get_order')) : ?>
+                        <?php
+                        $tracking_order = wc_get_order($order_id);
+                        $tracking_stage = $tracking_order instanceof WC_Order ? goody_normalize_tracking_stage((string) $tracking_order->get_meta('_goody_tracking_stage', true)) : '';
+                        if ($tracking_stage === '' && $tracking_order instanceof WC_Order) {
+                            $tracking_stage = goody_normalize_tracking_stage((string) $tracking_order->get_status());
+                        }
+                        $tracking_status = $tracking_order instanceof WC_Order ? sanitize_text_field((string) $tracking_order->get_meta('_goody_tracking_status', true)) : '';
+                        $tracking_provider = $tracking_order instanceof WC_Order ? sanitize_text_field((string) ($tracking_order->get_meta('_goody_delivery_provider', true) ?: $tracking_order->get_meta('delivery_provider', true))) : '';
+                        $tracking_eta = $tracking_order instanceof WC_Order ? sanitize_text_field((string) $tracking_order->get_meta('_goody_tracking_eta', true)) : '';
+                        ?>
+                        <form method="post" style="margin:16px 0;padding:12px;border:1px solid #dcdcde;border-radius:8px;">
+                            <?php wp_nonce_field('goody_update_order_tracking_from_dashboard', 'goody_order_tracking_nonce'); ?>
+                            <input type="hidden" name="reservation_post_id" value="<?php echo esc_attr((string) $view_post->ID); ?>">
+                            <p style="margin:0 0 10px;"><strong><?php esc_html_e('Order Tracking Update', 'goody'); ?></strong></p>
+                            <label for="tracking_stage"><strong><?php esc_html_e('Tracking Stage', 'goody'); ?></strong></label><br>
+                            <select name="tracking_stage" id="tracking_stage">
+                                <?php foreach (goody_get_tracking_stage_definitions() as $stage_key => $stage_label) : ?>
+                                    <option value="<?php echo esc_attr($stage_key); ?>" <?php selected($tracking_stage, $stage_key); ?>><?php echo esc_html($stage_label); ?></option>
+                                <?php endforeach; ?>
+                            </select><br><br>
+                            <label for="tracking_status"><strong><?php esc_html_e('Status Label', 'goody'); ?></strong></label><br>
+                            <input type="text" id="tracking_status" name="tracking_status" value="<?php echo esc_attr($tracking_status); ?>" style="width:100%;"><br><br>
+                            <label for="tracking_provider"><strong><?php esc_html_e('Delivery Provider Name', 'goody'); ?></strong></label><br>
+                            <input type="text" id="tracking_provider" name="tracking_provider" value="<?php echo esc_attr($tracking_provider); ?>" style="width:100%;"><br><br>
+                            <label for="tracking_eta"><strong><?php esc_html_e('ETA', 'goody'); ?></strong></label><br>
+                            <input type="text" id="tracking_eta" name="tracking_eta" value="<?php echo esc_attr($tracking_eta); ?>" style="width:100%;"><br><br>
+                            <label for="tracking_note"><strong><?php esc_html_e('Note (optional)', 'goody'); ?></strong></label><br>
+                            <input type="text" id="tracking_note" name="tracking_note" value="" style="width:100%;"><br><br>
+                            <?php submit_button(__('Update Reservation & Tracking', 'goody'), 'primary', '', false); ?>
+                        </form>
+                    <?php endif; ?>
                     <div><?php echo wp_kses_post($summary_html); ?></div>
                 <?php else : ?>
                     <p><?php esc_html_e('Select a reservation from the list to view details.', 'goody'); ?></p>

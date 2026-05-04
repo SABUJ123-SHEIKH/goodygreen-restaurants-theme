@@ -989,14 +989,17 @@
 
 .goody-reservation-tracking-steps {
   list-style: none;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 0.35rem;
   margin: 0;
   padding: 0.9rem;
   border: 1px solid var(--goody-reservation-border);
   border-radius: 16px;
   background: color-mix(in srgb, var(--color-bg, #04120d) 68%, transparent);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .goody-reservation-tracking-step {
@@ -1004,6 +1007,8 @@
   padding-top: 1.25rem;
   color: var(--goody-reservation-muted);
   text-align: center;
+  min-width: 96px;
+  flex: 1 0 96px;
 }
 
 .goody-reservation-tracking-step::before {

@@ -2114,9 +2114,12 @@ body.goody-direct-order-modal-open {
   margin: 0;
   padding: 0;
   list-style: none;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 0.3rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .tracking-step {
@@ -2124,6 +2127,8 @@ body.goody-direct-order-modal-open {
   text-align: center;
   color: var(--color-muted);
   padding-top: 1.25rem;
+  min-width: 104px;
+  flex: 1 0 104px;
 }
 
 .tracking-step::before {
@@ -4976,5 +4981,60 @@ h5 {
   .hero__review-chip {
     right: 1rem;
     min-width: 0;
+  }
+}
+
+.goody-account-tracking {
+  display: grid;
+  gap: 1rem;
+}
+
+.goody-account-tracking__head {
+  border: 1px solid rgba(136, 176, 149, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(23, 58, 42, 0.46), rgba(7, 22, 15, 0.84));
+  padding: 1rem 1.1rem;
+}
+
+.goody-account-tracking__head h3 {
+  margin: 0 0 0.3rem;
+}
+
+.goody-account-tracking__head p {
+  margin: 0;
+  color: rgba(221, 234, 223, 0.78);
+}
+
+.goody-account-tracking__picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: end;
+  border: 1px solid rgba(136, 176, 149, 0.24);
+  border-radius: 14px;
+  background: rgba(6, 16, 12, 0.72);
+  padding: 0.9rem;
+}
+
+.goody-account-tracking__picker label {
+  grid-column: 1 / -1;
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(188, 211, 195, 0.8);
+}
+
+.goody-account-tracking__picker select {
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(114, 152, 126, 0.35);
+  background: rgba(5, 16, 11, 0.68);
+  color: var(--color-text);
+  padding: 0.58rem 0.72rem;
+}
+
+@media (max-width: 700px) {
+  .goody-account-tracking__picker {
+    grid-template-columns: 1fr;
   }
 }

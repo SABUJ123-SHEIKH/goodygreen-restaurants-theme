@@ -1706,9 +1706,13 @@ function goody_get_tracking_empty_state() {
         'status' => '',
         'stage' => '',
         'eta' => '',
+        'note' => '',
         'provider' => '',
         'message' => '',
         'timeline' => [],
+        'order_type' => '',
+        'manual_mode' => false,
+        'source' => '',
     ];
 }
 
@@ -1755,11 +1759,12 @@ function goody_get_tracking_page_url($order_id = '', $order_key = '') {
 
 function goody_get_tracking_stage_definitions() {
     return [
-        'accepted' => __('Accepted', 'goody'),
-        'picked' => __('Picked', 'goody'),
-        'in_transit' => __('In Transit', 'goody'),
-        'ready_for_delivery' => __('Ready for Delivery', 'goody'),
-        'delivered' => __('Delivered', 'goody'),
+        'requested' => __('Requested', 'goody'),
+        'confirmed' => __('Confirmed', 'goody'),
+        'preparing' => __('Preparing', 'goody'),
+        'ready' => __('Ready', 'goody'),
+        'with_delivery_provider' => __('Delivery Provider', 'goody'),
+        'completed' => __('Completed', 'goody'),
     ];
 }
 
@@ -1780,34 +1785,39 @@ function goody_normalize_tracking_stage($value) {
     $raw = str_replace(['-', ' '], '_', $raw);
 
     $aliases = [
-        'accepted' => 'accepted',
-        'order_received' => 'accepted',
-        'received' => 'accepted',
-        'confirmed' => 'accepted',
-        'pending' => 'accepted',
-        'on_hold' => 'accepted',
-        'draft' => 'accepted',
-        'checkout_draft' => 'accepted',
-        'failed' => 'accepted',
-        'cancelled' => 'accepted',
-        'refunded' => 'accepted',
-        'picked' => 'picked',
-        'pickup' => 'picked',
-        'picked_up' => 'picked',
-        'assigned' => 'picked',
-        'courier_assigned' => 'picked',
-        'in_transit' => 'in_transit',
-        'transit' => 'in_transit',
-        'on_the_way' => 'in_transit',
-        'shipping' => 'in_transit',
-        'processing' => 'in_transit',
-        'shipped' => 'ready_for_delivery',
-        'ready_for_delivery' => 'ready_for_delivery',
-        'out_for_delivery' => 'ready_for_delivery',
-        'ready' => 'ready_for_delivery',
-        'delivered' => 'delivered',
-        'complete' => 'delivered',
-        'completed' => 'delivered',
+        'requested' => 'requested',
+        'accepted' => 'requested',
+        'order_received' => 'requested',
+        'received' => 'requested',
+        'pending' => 'requested',
+        'on_hold' => 'requested',
+        'draft' => 'requested',
+        'checkout_draft' => 'requested',
+        'failed' => 'requested',
+        'cancelled' => 'requested',
+        'refunded' => 'requested',
+        'confirmed' => 'confirmed',
+        'picked' => 'confirmed',
+        'pickup' => 'confirmed',
+        'picked_up' => 'confirmed',
+        'assigned' => 'confirmed',
+        'courier_assigned' => 'confirmed',
+        'preparing' => 'preparing',
+        'in_transit' => 'preparing',
+        'transit' => 'preparing',
+        'on_the_way' => 'preparing',
+        'shipping' => 'preparing',
+        'processing' => 'preparing',
+        'shipped' => 'preparing',
+        'ready_for_delivery' => 'ready',
+        'out_for_delivery' => 'ready',
+        'ready' => 'ready',
+        'with_delivery_provider' => 'with_delivery_provider',
+        'delivery_provider' => 'with_delivery_provider',
+        'provider' => 'with_delivery_provider',
+        'delivered' => 'completed',
+        'complete' => 'completed',
+        'completed' => 'completed',
     ];
 
     if (isset($aliases[$raw])) {
@@ -1830,22 +1840,34 @@ function goody_detect_tracking_stage_from_text($text) {
 
     $needle = strtolower($text);
     if (strpos($needle, 'deliver') !== false) {
-        return 'delivered';
+        return strpos($needle, 'provider') !== false ? 'with_delivery_provider' : 'completed';
     }
     if (strpos($needle, 'ready') !== false || strpos($needle, 'out for delivery') !== false) {
-        return 'ready_for_delivery';
+        return 'ready';
     }
     if (strpos($needle, 'transit') !== false || strpos($needle, 'way') !== false || strpos($needle, 'ship') !== false) {
-        return 'in_transit';
+        return 'preparing';
     }
     if (strpos($needle, 'pick') !== false || strpos($needle, 'assign') !== false || strpos($needle, 'courier') !== false) {
-        return 'picked';
+        return 'confirmed';
     }
     if (strpos($needle, 'accept') !== false || strpos($needle, 'receiv') !== false || strpos($needle, 'confirm') !== false || strpos($needle, 'new order') !== false) {
-        return 'accepted';
+        return strpos($needle, 'confirm') !== false ? 'confirmed' : 'requested';
+    }
+    if (strpos($needle, 'complete') !== false || strpos($needle, 'serve') !== false || strpos($needle, 'finished') !== false) {
+        return 'completed';
     }
 
     return '';
+}
+
+function goody_get_tracking_stage_order_for_type($order_type = '') {
+    $order_type = sanitize_key((string) $order_type);
+    if ($order_type === 'delivery') {
+        return ['requested', 'confirmed', 'preparing', 'ready', 'with_delivery_provider', 'completed'];
+    }
+
+    return ['requested', 'confirmed', 'preparing', 'ready', 'completed'];
 }
 
 function goody_format_tracking_datetime($value) {
@@ -1925,6 +1947,8 @@ function goody_normalize_tracking_timeline($items) {
 
 function goody_get_tracking_steps($state) {
     $defs = goody_get_tracking_stage_definitions();
+    $order_type = sanitize_key((string) ($state['order_type'] ?? ''));
+    $allowed_stage_keys = goody_get_tracking_stage_order_for_type($order_type);
     $current_stage = goody_normalize_tracking_stage($state['stage'] ?? '');
     if ($current_stage === '') {
         $current_stage = goody_detect_tracking_stage_from_text((string) ($state['status'] ?? ''));
@@ -1943,16 +1967,17 @@ function goody_get_tracking_steps($state) {
     }
 
     $current_index = goody_get_tracking_stage_index($current_stage);
+    $current_order_index = array_search($current_stage, $allowed_stage_keys, true);
+    $current_order_index = $current_order_index === false ? -1 : (int) $current_order_index;
     $steps = [];
-    $index = 0;
-    foreach ($defs as $key => $label) {
+    foreach ($allowed_stage_keys as $index => $key) {
+        $label = (string) ($defs[$key] ?? ucfirst(str_replace('_', ' ', $key)));
         $steps[] = [
             'key' => $key,
             'label' => $label,
-            'done' => $current_index >= 0 && $index <= $current_index,
-            'active' => $current_index === $index,
+            'done' => $current_order_index >= 0 && $index <= $current_order_index,
+            'active' => $current_order_index === $index,
         ];
-        $index++;
     }
 
     return $steps;
@@ -1960,12 +1985,25 @@ function goody_get_tracking_steps($state) {
 
 function goody_get_woocommerce_order_id_from_request($override = '') {
     $order_id = absint($override);
+    if ($order_id < 1 && is_scalar($override)) {
+        $override_text = trim((string) $override);
+        if ($override_text !== '' && preg_match('/(\d+)/', $override_text, $matches) && ! empty($matches[1])) {
+            $order_id = absint($matches[1]);
+        }
+    }
     if ($order_id > 0) {
         return $order_id;
     }
 
     foreach (['order_id', 'order', 'id', 'order-received', 'view-order', 'order-pay'] as $key) {
-        $value = absint(wp_unslash($_GET[$key] ?? 0));
+        $raw_value = wp_unslash($_GET[$key] ?? 0);
+        $value = absint($raw_value);
+        if ($value < 1 && is_scalar($raw_value)) {
+            $raw_text = trim((string) $raw_value);
+            if ($raw_text !== '' && preg_match('/(\d+)/', $raw_text, $matches) && ! empty($matches[1])) {
+                $value = absint($matches[1]);
+            }
+        }
         if ($value > 0) {
             return $value;
         }
@@ -3282,6 +3320,13 @@ function goody_can_access_woocommerce_order_tracking($order, $order_key = '') {
         return true;
     }
 
+    // Reservation-linked orders are intended to be trackable from the public
+    // status page with Order ID only.
+    $reservation_id = absint($order->get_meta('_goody_reservation_id', true));
+    if ($reservation_id > 0) {
+        return true;
+    }
+
     return $matches_key;
 }
 
@@ -3347,6 +3392,17 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
         return $state;
     }
 
+    $manual_tracking_mode = (string) $order->get_meta('_goody_tracking_manual_updates', true) === '1';
+    $state['manual_mode'] = $manual_tracking_mode;
+    $state['source'] = 'woocommerce';
+    $state['order_type'] = sanitize_key((string) $order->get_meta('_goody_reservation_order_type', true));
+    if ($state['order_type'] === '') {
+        $reservation_id = absint($order->get_meta('_goody_reservation_id', true));
+        if ($reservation_id > 0) {
+            $state['order_type'] = sanitize_key((string) get_post_meta($reservation_id, 'goody_reservation_order_type', true));
+        }
+    }
+
     $order_key = goody_get_tracking_order_key($order_key_override);
     if (! goody_can_access_woocommerce_order_tracking($order, $order_key)) {
         $state['order_id'] = (string) $order_id;
@@ -3387,12 +3443,17 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
         $shipping_name = trim((string) $order->get_formatted_billing_full_name());
     }
     $state['shipping_name'] = sanitize_text_field((string) ($order->get_meta('_goody_shipping_name', true) ?: $shipping_name));
-    $state['shipping_phone'] = sanitize_text_field((string) (
-        $order->get_meta('_goody_shipping_phone', true) ?:
-        $order->get_billing_phone() ?:
-        $order->get_meta('shipping_phone', true) ?:
-        $order->get_meta('_shipping_phone', true)
-    ));
+    $shipping_phone_value = sanitize_text_field((string) $order->get_meta('_goody_shipping_phone', true));
+    if ($shipping_phone_value === '' && method_exists($order, 'get_shipping_phone')) {
+        $shipping_phone_value = sanitize_text_field((string) $order->get_shipping_phone());
+    }
+    if ($shipping_phone_value === '') {
+        $shipping_phone_value = sanitize_text_field((string) $order->get_billing_phone());
+    }
+    if ($shipping_phone_value === '') {
+        $shipping_phone_value = sanitize_text_field((string) $order->get_meta('shipping_phone', true));
+    }
+    $state['shipping_phone'] = $shipping_phone_value;
 
     $shipping_address = trim(wp_strip_all_tags((string) $order->get_formatted_shipping_address()));
     if ($shipping_address === '') {
@@ -3419,6 +3480,7 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
     }
 
     $state['eta'] = sanitize_text_field((string) $order->get_meta('_goody_tracking_eta', true));
+    $state['note'] = sanitize_text_field((string) $order->get_meta('_goody_tracking_note', true));
     if ($state['eta'] === '') {
         foreach (['goody_delivery_eta', '_goody_delivery_eta', 'delivery_eta', '_delivery_eta', 'estimated_delivery', '_estimated_delivery', 'eta', '_eta'] as $meta_key) {
             $eta = sanitize_text_field((string) $order->get_meta($meta_key, true));
@@ -3427,6 +3489,11 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
                 break;
             }
         }
+    }
+
+    $stored_timeline = json_decode((string) $order->get_meta('_goody_tracking_timeline', true), true);
+    if (is_array($stored_timeline) && ! empty($stored_timeline)) {
+        $state['timeline'] = goody_normalize_tracking_timeline($stored_timeline);
     }
 
     if (goody_get_option('delivery_auto_create_enabled', '0') === '1') {
@@ -3447,7 +3514,7 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
     }
 
     // Pull fresh provider-side tracking data when available.
-    $synced_state = goody_sync_woocommerce_order_tracking_from_api($order, false);
+    $synced_state = $manual_tracking_mode ? [] : goody_sync_woocommerce_order_tracking_from_api($order, false);
     if (is_array($synced_state) && ! empty($synced_state)) {
         foreach ([
             'consignment_id',
@@ -3486,29 +3553,31 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
     $updated_time = goody_format_tracking_datetime($order->get_date_modified());
     $completed_time = goody_format_tracking_datetime($order->get_date_completed());
 
-    $timeline[] = [
-        'stage' => 'accepted',
-        'title' => (string) ($stages['accepted'] ?? __('Accepted', 'goody')),
-        'description' => __('Order has been received.', 'goody'),
-        'time' => $created_time,
-        'completed' => true,
-    ];
+    if ($stage_index >= 0) {
+        $timeline[] = [
+            'stage' => 'requested',
+            'title' => (string) ($stages['requested'] ?? __('Requested', 'goody')),
+            'description' => __('Order request has been received.', 'goody'),
+            'time' => $paid_time !== '' ? $paid_time : ($created_time !== '' ? $created_time : $updated_time),
+            'completed' => true,
+        ];
+    }
 
     if ($stage_index >= 1) {
         $timeline[] = [
-            'stage' => 'picked',
-            'title' => (string) ($stages['picked'] ?? __('Picked', 'goody')),
-            'description' => __('Pickup has been assigned.', 'goody'),
-            'time' => $paid_time !== '' ? $paid_time : $updated_time,
+            'stage' => 'confirmed',
+            'title' => (string) ($stages['confirmed'] ?? __('Confirmed', 'goody')),
+            'description' => __('Order has been confirmed.', 'goody'),
+            'time' => $updated_time,
             'completed' => true,
         ];
     }
 
     if ($stage_index >= 2) {
         $timeline[] = [
-            'stage' => 'in_transit',
-            'title' => (string) ($stages['in_transit'] ?? __('In Transit', 'goody')),
-            'description' => __('Order is in transit.', 'goody'),
+            'stage' => 'preparing',
+            'title' => (string) ($stages['preparing'] ?? __('Preparing', 'goody')),
+            'description' => __('Order is being prepared.', 'goody'),
             'time' => $updated_time,
             'completed' => true,
         ];
@@ -3516,19 +3585,30 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
 
     if ($stage_index >= 3) {
         $timeline[] = [
-            'stage' => 'ready_for_delivery',
-            'title' => (string) ($stages['ready_for_delivery'] ?? __('Ready for Delivery', 'goody')),
-            'description' => __('Order has reached the final delivery stage.', 'goody'),
+            'stage' => 'ready',
+            'title' => (string) ($stages['ready'] ?? __('Ready', 'goody')),
+            'description' => __('Order is ready.', 'goody'),
             'time' => $updated_time,
             'completed' => true,
         ];
     }
 
-    if ($stage_index >= 4) {
+    if ($state['order_type'] === 'delivery' && $stage_index >= 4) {
         $timeline[] = [
-            'stage' => 'delivered',
-            'title' => (string) ($stages['delivered'] ?? __('Delivered', 'goody')),
-            'description' => __('Order has been delivered.', 'goody'),
+            'stage' => 'with_delivery_provider',
+            'title' => (string) ($stages['with_delivery_provider'] ?? __('Delivery Provider', 'goody')),
+            'description' => __('Order handed over to delivery provider.', 'goody'),
+            'time' => $updated_time,
+            'completed' => true,
+        ];
+    }
+
+    $completed_threshold = $state['order_type'] === 'delivery' ? 5 : 4;
+    if ($stage_index >= $completed_threshold) {
+        $timeline[] = [
+            'stage' => 'completed',
+            'title' => (string) ($stages['completed'] ?? __('Completed', 'goody')),
+            'description' => __('Order has been completed.', 'goody'),
             'time' => $completed_time !== '' ? $completed_time : $updated_time,
             'completed' => true,
         ];
@@ -3881,9 +3961,13 @@ function goody_parse_tracking_payload($data, $fallback_url = '', $provider_hint 
 }
 
 function goody_get_tracking_state($force_refresh = false, $order_id_override = '', $order_key_override = '') {
+    $woo_state = goody_get_woocommerce_tracking_state($order_id_override, $order_key_override);
+    if (! empty($woo_state['manual_mode']) && ($woo_state['order_id'] !== '' || $woo_state['message'] !== '')) {
+        return $woo_state;
+    }
+
     $tracking_source_raw = trim((string) goody_get_option('tracking_url', ''));
     if ($tracking_source_raw === '') {
-        $woo_state = goody_get_woocommerce_tracking_state($order_id_override, $order_key_override);
         if ($woo_state['order_id'] !== '' || $woo_state['message'] !== '') {
             return $woo_state;
         }
@@ -3898,7 +3982,6 @@ function goody_get_tracking_state($force_refresh = false, $order_id_override = '
     $resolved_external_order_id = goody_get_tracking_external_order_id();
     $resolved_source = goody_apply_tracking_placeholders($tracking_source, $resolved_order_id, $resolved_order_key, $resolved_external_order_id);
     if ($resolved_source === '') {
-        $woo_state = goody_get_woocommerce_tracking_state($order_id_override, $order_key_override);
         if ($woo_state['order_id'] !== '' || $woo_state['message'] !== '') {
             return $woo_state;
         }
@@ -3919,7 +4002,6 @@ function goody_get_tracking_state($force_refresh = false, $order_id_override = '
     }
 
     if (! goody_is_tracking_api_source($resolved_source)) {
-        $woo_state = goody_get_woocommerce_tracking_state($order_id_override, $order_key_override);
         if ($woo_state['order_id'] !== '' || $woo_state['message'] !== '') {
             if ($woo_state['url'] === '') {
                 $woo_state['url'] = $resolved_source;
@@ -3936,7 +4018,6 @@ function goody_get_tracking_state($force_refresh = false, $order_id_override = '
 
     $has_tracking_identity = ($resolved_order_id !== '' || $resolved_order_key !== '' || $resolved_external_order_id !== '');
     if (! $has_tracking_identity && ! $force_refresh) {
-        $woo_state = goody_get_woocommerce_tracking_state($order_id_override, $order_key_override);
         if ($woo_state['order_id'] !== '' || $woo_state['message'] !== '') {
             if ($woo_state['url'] === '') {
                 $woo_state['url'] = $resolved_source;
@@ -3965,7 +4046,6 @@ function goody_get_tracking_state($force_refresh = false, $order_id_override = '
     $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
 
     if (is_wp_error($response) || $code < 200 || $code >= 300) {
-        $woo_state = goody_get_woocommerce_tracking_state($order_id_override, $order_key_override);
         if ($woo_state['order_id'] !== '' || $woo_state['message'] !== '') {
             if ($woo_state['url'] === '') {
                 $woo_state['url'] = $resolved_source;
@@ -3993,7 +4073,6 @@ function goody_get_tracking_state($force_refresh = false, $order_id_override = '
 
     $data = json_decode($body, true);
     if (! is_array($data)) {
-        $woo_state = goody_get_woocommerce_tracking_state($order_id_override, $order_key_override);
         if ($woo_state['order_id'] !== '' || $woo_state['message'] !== '') {
             if ($woo_state['url'] === '') {
                 $woo_state['url'] = $resolved_source;

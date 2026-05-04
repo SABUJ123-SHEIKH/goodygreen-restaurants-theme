@@ -289,6 +289,12 @@ function goody_get_settings_fields() {
                 'description' => __('JSON path to events array, e.g. data.timeline.events', 'goody'),
             ],
             ['key' => 'tracking_enabled', 'label' => __('Enable Order Tracking Block', 'goody'), 'type' => 'checkbox'],
+            [
+                'key' => 'tracking_update_roles',
+                'label' => __('Tracking Update Roles', 'goody'),
+                'type' => 'roles_multiselect',
+                'description' => __('Select which user roles can update reservation/order tracking. Leave empty to use default access rules.', 'goody'),
+            ],
             ['key' => 'tracking_title', 'label' => __('Tracking Title', 'goody'), 'type' => 'text'],
             ['key' => 'tracking_description', 'label' => __('Tracking Description', 'goody'), 'type' => 'textarea'],
             ['key' => 'tracking_url', 'label' => __('Tracking URL', 'goody'), 'type' => 'url'],
@@ -894,6 +900,21 @@ function goody_sanitize_options($input) {
         } elseif ($type === 'select') {
             $allowed = array_keys($field['options'] ?? []);
             $sanitized[$key] = in_array($value, $allowed, true) ? $value : ($defaults[$key] ?? '');
+        } elseif ($type === 'roles_multiselect') {
+            $role_keys = [];
+            if (function_exists('wp_roles')) {
+                $wp_roles = wp_roles();
+                if ($wp_roles instanceof WP_Roles) {
+                    $role_keys = array_keys((array) $wp_roles->roles);
+                }
+            }
+            if (empty($role_keys)) {
+                $role_keys = ['administrator', 'shop_manager', 'shop_worker'];
+            }
+            $selected = is_array($value) ? $value : [];
+            $selected = array_values(array_unique(array_filter(array_map('sanitize_key', $selected))));
+            $selected = array_values(array_intersect($selected, $role_keys));
+            $sanitized[$key] = implode(',', $selected);
         } else {
             $sanitized[$key] = sanitize_text_field((string) $value);
         }
@@ -941,6 +962,34 @@ function goody_render_option_field($field, $options) {
             echo '<option value="' . esc_attr($option_value) . '" ' . selected($value, $option_value, false) . '>' . esc_html($option_label) . '</option>';
         }
         echo '</select>';
+    } elseif ($type === 'roles_multiselect') {
+        $selected_roles = array_values(array_filter(array_map('sanitize_key', explode(',', (string) $value))));
+        $roles = [];
+        if (function_exists('wp_roles')) {
+            $wp_roles = wp_roles();
+            if ($wp_roles instanceof WP_Roles) {
+                $roles = (array) $wp_roles->roles;
+            }
+        }
+        if (empty($roles)) {
+            $roles = [
+                'administrator' => ['name' => 'Administrator'],
+                'shop_manager' => ['name' => 'Shop manager'],
+                'shop_worker' => ['name' => 'Shop worker'],
+            ];
+        }
+        echo '<div id="' . esc_attr($key) . '" style="display:grid;gap:6px;">';
+        foreach ($roles as $role_key => $role_data) {
+            $role_name = is_array($role_data) ? (string) ($role_data['name'] ?? $role_key) : (string) $role_key;
+            $role_key = (string) $role_key;
+            $input_id = $key . '_' . $role_key;
+            echo '<label for="' . esc_attr($input_id) . '" style="display:flex;align-items:center;gap:8px;">';
+            echo '<input type="checkbox" id="' . esc_attr($input_id) . '" name="goody_theme_options[' . esc_attr($key) . '][]" value="' . esc_attr($role_key) . '" ' . checked(in_array($role_key, $selected_roles, true), true, false) . '>';
+            echo '<span>' . esc_html(translate_user_role($role_name)) . '</span>';
+            echo '</label>';
+        }
+        echo '</div>';
+        echo '<p class="description">' . esc_html__('Check roles to allow update access. Uncheck to remove access.', 'goody') . '</p>';
     } elseif ($type === 'color') {
         echo '<input type="color" id="' . esc_attr($key) . '" name="goody_theme_options[' . esc_attr($key) . ']" value="' . esc_attr((string) $value) . '">';
     } elseif ($type === 'media') {
