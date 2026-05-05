@@ -145,10 +145,10 @@ if (! empty($language_items)) {
 
             <div class="site-navigation__tools">
                 <?php if ($header_search_enabled) : ?>
-                    <form role="search" method="get" class="header-search" action="<?php echo esc_url(home_url('/')); ?>">
+                    <form role="search" method="get" class="header-search" action="<?php echo esc_url(home_url('/')); ?>" data-goody-search-trigger-form>
                         <label class="screen-reader-text" for="goody-header-search"><?php esc_html_e('Search', 'goody'); ?></label>
-                        <input id="goody-header-search" type="search" name="s" value="<?php echo esc_attr(get_search_query()); ?>" placeholder="<?php echo esc_attr(goody_get_option('header_search_placeholder', __('Search...', 'goody'))); ?>">
-                        <button type="submit" aria-label="<?php esc_attr_e('Search', 'goody'); ?>"><?php echo goody_svg('search'); ?></button>
+                        <input id="goody-header-search" type="search" name="s" value="<?php echo esc_attr(get_search_query()); ?>" placeholder="<?php echo esc_attr(goody_get_option('header_search_placeholder', __('Search...', 'goody'))); ?>" data-goody-search-trigger-input>
+                        <button type="button" aria-label="<?php esc_attr_e('Open search', 'goody'); ?>" data-goody-search-open><?php echo goody_svg('search'); ?></button>
                     </form>
                 <?php endif; ?>
 
@@ -163,5 +163,24 @@ if (! empty($language_items)) {
         </nav>
     </div>
 </header>
+
+<?php if ($header_search_enabled) : ?>
+    <section class="goody-search-modal" data-goody-search-modal hidden>
+        <button class="goody-search-modal__backdrop" type="button" aria-label="<?php esc_attr_e('Close search', 'goody'); ?>" data-goody-search-close></button>
+        <div class="goody-search-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="goody-search-modal-title">
+            <div class="goody-search-modal__head">
+                <p id="goody-search-modal-title"><?php esc_html_e('Search', 'goody'); ?></p>
+                <button class="goody-search-modal__close" type="button" aria-label="<?php esc_attr_e('Close search', 'goody'); ?>" data-goody-search-close>&times;</button>
+            </div>
+            <form class="goody-search-modal__form" role="search" method="get" action="<?php echo esc_url(home_url('/')); ?>" data-goody-search-form>
+                <label class="screen-reader-text" for="goody-search-modal-input"><?php esc_html_e('Search', 'goody'); ?></label>
+                <input id="goody-search-modal-input" type="search" name="s" value="" placeholder="<?php echo esc_attr(goody_get_option('header_search_placeholder', __('Search menu, offers, events...', 'goody'))); ?>" autocomplete="off" data-goody-search-input>
+                <button class="button button--small" type="submit"><?php esc_html_e('Search', 'goody'); ?></button>
+            </form>
+            <div class="goody-search-modal__meta" data-goody-search-meta><?php esc_html_e('Start typing to find menu items, offers, events, and posts.', 'goody'); ?></div>
+            <div class="goody-search-modal__results" data-goody-search-results></div>
+        </div>
+    </section>
+<?php endif; ?>
 
 <main class="site-main">

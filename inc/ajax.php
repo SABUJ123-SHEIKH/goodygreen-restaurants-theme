@@ -69,6 +69,80 @@ function goody_ajax_tracking_status() {
 add_action('wp_ajax_goody_tracking_status', 'goody_ajax_tracking_status');
 add_action('wp_ajax_nopriv_goody_tracking_status', 'goody_ajax_tracking_status');
 
+function goody_ajax_search() {
+    check_ajax_referer('goody_nonce', 'nonce');
+
+    $term = sanitize_text_field(wp_unslash($_POST['q'] ?? ''));
+    $term = trim($term);
+
+    if ($term === '' || strlen($term) < 2) {
+        wp_send_json_success([
+            'html' => '',
+            'count' => 0,
+        ]);
+    }
+
+    $query = new WP_Query([
+        'post_type' => ['menu_item', 'offer', 'event', 'post', 'team_member'],
+        'post_status' => 'publish',
+        'posts_per_page' => 8,
+        's' => $term,
+        'ignore_sticky_posts' => true,
+        'no_found_rows' => true,
+    ]);
+
+    ob_start();
+    if ($query->have_posts()) {
+        echo '<div class="goody-search-results-grid">';
+        while ($query->have_posts()) {
+            $query->the_post();
+
+            $post_type = get_post_type() ?: 'post';
+            $post_type_object = get_post_type_object($post_type);
+            $post_type_label = $post_type_object && isset($post_type_object->labels->singular_name)
+                ? (string) $post_type_object->labels->singular_name
+                : ucfirst(str_replace('_', ' ', $post_type));
+
+            $title = get_the_title();
+            if ($title === '') {
+                $title = __('Untitled', 'goody');
+            }
+
+            $excerpt = get_the_excerpt();
+            if ($excerpt === '') {
+                $excerpt = wp_trim_words(wp_strip_all_tags((string) get_the_content(null, false)), 16);
+            }
+
+            echo '<a class="goody-search-result" href="' . esc_url(get_permalink()) . '">';
+            if (has_post_thumbnail()) {
+                echo '<span class="goody-search-result__thumb">' . get_the_post_thumbnail(get_the_ID(), 'thumbnail', ['loading' => 'lazy', 'decoding' => 'async']) . '</span>';
+            } else {
+                echo '<span class="goody-search-result__thumb"><span class="goody-search-result__thumb-placeholder">' . esc_html(strtoupper(substr($post_type_label, 0, 1))) . '</span></span>';
+            }
+
+            echo '<span class="goody-search-result__body">';
+            echo '<span class="goody-search-result__type">' . esc_html($post_type_label) . '</span>';
+            echo '<strong class="goody-search-result__title">' . esc_html($title) . '</strong>';
+            if ($excerpt !== '') {
+                echo '<span class="goody-search-result__excerpt">' . esc_html($excerpt) . '</span>';
+            }
+            echo '</span>';
+            echo '</a>';
+        }
+        echo '</div>';
+        wp_reset_postdata();
+    } else {
+        echo '<div class="card empty-state"><h3>' . esc_html__('No results found', 'goody') . '</h3><p>' . esc_html__('Try a different keyword.', 'goody') . '</p></div>';
+    }
+
+    wp_send_json_success([
+        'html' => (string) ob_get_clean(),
+        'count' => (int) $query->post_count,
+    ]);
+}
+add_action('wp_ajax_goody_search', 'goody_ajax_search');
+add_action('wp_ajax_nopriv_goody_search', 'goody_ajax_search');
+
 function goody_rest_test_delivery(WP_REST_Request $request) {
     $provider = sanitize_key((string) $request->get_param('provider'));
     if (! in_array($provider, ['glovo', 'ubereats', 'deliveroo', 'custom'], true)) {

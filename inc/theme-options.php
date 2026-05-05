@@ -65,6 +65,22 @@ function goody_get_settings_fields() {
             ['key' => 'restaurant_logo', 'label' => __('Restaurant Logo (Theme Option)', 'goody'), 'type' => 'media'],
         ],
         'design' => [
+            [
+                'key' => 'design_color_preset',
+                'label' => __('Color Preset', 'goody'),
+                'type' => 'select',
+                'options' => [
+                    'custom' => __('Custom (Keep Manual Colors)', 'goody'),
+                    'trusted_professional' => __('Trusted Professional (Default System Preset)', 'goody'),
+                ],
+                'description' => __('Choose preset and save. Custom keeps manual colors.', 'goody'),
+            ],
+            [
+                'key' => 'design_auto_harmony',
+                'label' => __('Auto Apply Theme Harmony From Primary', 'goody'),
+                'type' => 'checkbox',
+                'description' => __('When enabled, changing one primary color auto-adjusts full theme token balance.', 'goody'),
+            ],
             ['key' => 'token_color_primary', 'label' => __('Primary Color', 'goody'), 'type' => 'color'],
             ['key' => 'token_color_primary_2', 'label' => __('Secondary Green Color', 'goody'), 'type' => 'color'],
             ['key' => 'token_color_primary_hover', 'label' => __('Primary Hover Color', 'goody'), 'type' => 'color'],
@@ -719,6 +735,24 @@ function goody_get_settings_fields() {
             ],
         ],
         'footer' => [
+            [
+                'key' => 'footer_content_source',
+                'label' => __('Footer Layout', 'goody'),
+                'type' => 'select',
+                'options' => [
+                    'theme' => __('Default Footer', 'goody'),
+                    'gutenberg' => __('Gutenberg Footer (Selectable)', 'goody'),
+                ],
+            ],
+            [
+                'key' => 'footer_gutenberg_content_id',
+                'label' => __('Gutenberg Footer Content', 'goody'),
+                'type' => 'post_select',
+                'post_type' => ['wp_block', 'page', 'post'],
+                'depends_on' => 'footer_content_source',
+                'depends_value' => 'gutenberg',
+                'description' => __('Select a reusable block/page/post built with Gutenberg.', 'goody'),
+            ],
             ['key' => 'footer_quick_title', 'label' => __('Quick Links Title', 'goody'), 'type' => 'text'],
             ['key' => 'footer_legal_title', 'label' => __('Legal Links Title', 'goody'), 'type' => 'text'],
             ['key' => 'footer_payment_icons', 'label' => __('Payment Icons (Upload Multiple)', 'goody'), 'type' => 'gallery'],
@@ -822,6 +856,102 @@ function goody_sanitize_repeater_value($json, $columns) {
     return wp_json_encode($clean);
 }
 
+function goody_hex_to_rgb($color) {
+    $hex = strtolower(trim((string) $color));
+    if ($hex === '') {
+        return null;
+    }
+    if ($hex[0] === '#') {
+        $hex = substr($hex, 1);
+    }
+    if (strlen($hex) === 3) {
+        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    }
+    if (! preg_match('/^[0-9a-f]{6}$/', $hex)) {
+        return null;
+    }
+    return [
+        'r' => hexdec(substr($hex, 0, 2)),
+        'g' => hexdec(substr($hex, 2, 2)),
+        'b' => hexdec(substr($hex, 4, 2)),
+    ];
+}
+
+function goody_rgb_to_hex($rgb) {
+    $r = max(0, min(255, (int) round((float) ($rgb['r'] ?? 0))));
+    $g = max(0, min(255, (int) round((float) ($rgb['g'] ?? 0))));
+    $b = max(0, min(255, (int) round((float) ($rgb['b'] ?? 0))));
+    return sprintf('#%02X%02X%02X', $r, $g, $b);
+}
+
+function goody_blend_rgb($base, $target, $target_weight) {
+    $w = max(0, min(1, (float) $target_weight));
+    return [
+        'r' => ((1 - $w) * (float) $base['r']) + ($w * (float) $target['r']),
+        'g' => ((1 - $w) * (float) $base['g']) + ($w * (float) $target['g']),
+        'b' => ((1 - $w) * (float) $base['b']) + ($w * (float) $target['b']),
+    ];
+}
+
+function goody_rgba_from_rgb($rgb, $alpha) {
+    $a = max(0, min(1, (float) $alpha));
+    $r = max(0, min(255, (int) round((float) ($rgb['r'] ?? 0))));
+    $g = max(0, min(255, (int) round((float) ($rgb['g'] ?? 0))));
+    $b = max(0, min(255, (int) round((float) ($rgb['b'] ?? 0))));
+    return 'rgba(' . $r . ', ' . $g . ', ' . $b . ', ' . rtrim(rtrim(number_format($a, 2, '.', ''), '0'), '.') . ')';
+}
+
+function goody_generate_harmony_palette($anchor_hex) {
+    $anchor = goody_hex_to_rgb($anchor_hex);
+    if (! $anchor) {
+        return [];
+    }
+
+    // Ratio intent:
+    // Cream/light ~60%, dark green ~15%, soft green ~10%, gold accent ~5-8%, white ~5-7%, text ~3-5%.
+    $cream = ['r' => 250, 'g' => 246, 'b' => 239];
+    $dark_green = ['r' => 43, 'g' => 94, 'b' => 62];
+    $soft_green = ['r' => 122, 'g' => 158, 'b' => 126];
+    $gold = ['r' => 201, 'g' => 168, 'b' => 76];
+    $white = ['r' => 255, 'g' => 255, 'b' => 255];
+    $black = ['r' => 0, 'g' => 0, 'b' => 0];
+
+    $primary = goody_blend_rgb($dark_green, $anchor, 0.42);
+    $primary_2 = goody_blend_rgb($primary, $black, 0.22);
+    $primary_hover = goody_blend_rgb($primary, $white, 0.16);
+
+    $bg_deep = goody_blend_rgb($cream, $dark_green, 0.08);
+    $bg = goody_blend_rgb($cream, $white, 0.18);
+    $bg_soft = goody_blend_rgb($cream, $soft_green, 0.14);
+    $section = goody_blend_rgb($cream, $soft_green, 0.20);
+    $card = $white;
+    $card_soft = goody_blend_rgb($cream, $soft_green, 0.22);
+    $surface = goody_blend_rgb($cream, $soft_green, 0.16);
+    $text = goody_blend_rgb($dark_green, $black, 0.38);
+    $muted = goody_blend_rgb($text, $white, 0.34);
+    $accent = goody_blend_rgb($gold, $anchor, 0.10);
+
+    return [
+        'token_color_primary' => goody_rgb_to_hex($primary),
+        'token_color_primary_2' => goody_rgb_to_hex($primary_2),
+        'token_color_primary_hover' => goody_rgb_to_hex($primary_hover),
+        'token_color_button_text' => '#FAF6EF',
+        'reservation_button_color' => goody_rgb_to_hex($primary),
+        'reservation_accent_color' => goody_rgb_to_hex($accent),
+        'token_color_bg_deep' => goody_rgb_to_hex($bg_deep),
+        'token_color_bg' => goody_rgb_to_hex($bg),
+        'token_color_bg_soft' => goody_rgb_to_hex($bg_soft),
+        'token_color_section' => goody_rgb_to_hex($section),
+        'token_color_card' => goody_rgb_to_hex($card),
+        'token_color_card_soft' => goody_rgb_to_hex($card_soft),
+        'token_color_surface' => goody_rgb_to_hex($surface),
+        'token_color_text' => goody_rgb_to_hex($text),
+        'token_color_muted' => goody_rgb_to_hex($muted),
+        'token_color_border' => goody_rgba_from_rgb($soft_green, 0.25),
+        'token_color_shadow' => goody_rgba_from_rgb($black, 0.16),
+    ];
+}
+
 function goody_sanitize_options($input) {
     $defaults = goody_default_options();
     $current = goody_get_options();
@@ -915,8 +1045,57 @@ function goody_sanitize_options($input) {
             $selected = array_values(array_unique(array_filter(array_map('sanitize_key', $selected))));
             $selected = array_values(array_intersect($selected, $role_keys));
             $sanitized[$key] = implode(',', $selected);
+        } elseif ($type === 'post_select') {
+            $sanitized[$key] = (string) absint($value);
         } else {
             $sanitized[$key] = sanitize_text_field((string) $value);
+        }
+    }
+
+    if (($sanitized['design_color_preset'] ?? 'custom') === 'trusted_professional') {
+        $sanitized['token_color_primary'] = '#2B5E3E';
+        $sanitized['token_color_primary_2'] = '#1F4A32';
+        $sanitized['token_color_primary_hover'] = '#4A7C59';
+        $sanitized['token_color_button_text'] = '#FAF6EF';
+        $sanitized['reservation_button_color'] = '#2B5E3E';
+        $sanitized['reservation_accent_color'] = '#C9A84C';
+        $sanitized['token_color_bg_deep'] = '#EDE3D0';
+        $sanitized['token_color_bg'] = '#FAF6EF';
+        $sanitized['token_color_bg_soft'] = '#F2EAD8';
+        $sanitized['token_color_section'] = '#F5EFE2';
+        $sanitized['token_color_card'] = '#FFFFFF';
+        $sanitized['token_color_card_soft'] = '#E8F1E8';
+        $sanitized['token_color_surface'] = '#FFFDF9';
+        $sanitized['token_color_text'] = '#1A1A18';
+        $sanitized['token_color_muted'] = '#7A7570';
+        $sanitized['token_color_border'] = 'rgba(122, 158, 126, 0.25)';
+        $sanitized['token_color_shadow'] = 'rgba(26, 26, 24, 0.15)';
+    }
+
+    if (($sanitized['design_auto_harmony'] ?? '0') === '1') {
+        $color_anchor_keys = [
+            'token_color_primary',
+            'token_color_primary_2',
+            'token_color_primary_hover',
+            'reservation_button_color',
+        ];
+        $anchor_hex = '';
+        foreach ($color_anchor_keys as $anchor_key) {
+            $prev = sanitize_hex_color((string) ($current[$anchor_key] ?? ''));
+            $next = sanitize_hex_color((string) ($sanitized[$anchor_key] ?? ''));
+            if ($next && $next !== $prev) {
+                $anchor_hex = $next;
+                break;
+            }
+        }
+        if ($anchor_hex === '') {
+            $anchor_hex = sanitize_hex_color((string) ($sanitized['token_color_primary'] ?? ''));
+        }
+        $derived = goody_generate_harmony_palette($anchor_hex);
+        if (! empty($derived)) {
+            foreach ($derived as $palette_key => $palette_value) {
+                $sanitized[$palette_key] = $palette_value;
+            }
         }
     }
 
@@ -1039,6 +1218,38 @@ function goody_render_option_field($field, $options) {
 
         echo '</div>';
         echo '<button type="button" class="button button-secondary goody-repeater-add" data-target="' . esc_attr($key) . '">' . esc_html__('Add Row', 'goody') . '</button>';
+    } elseif ($type === 'post_select') {
+        $post_types = $field['post_type'] ?? ['page'];
+        if (! is_array($post_types) || empty($post_types)) {
+            $post_types = ['page'];
+        }
+
+        $posts = get_posts([
+            'post_type' => $post_types,
+            'post_status' => 'publish',
+            'numberposts' => 200,
+            'orderby' => 'date',
+            'order' => 'DESC',
+        ]);
+
+        echo '<select id="' . esc_attr($key) . '" name="goody_theme_options[' . esc_attr($key) . ']">';
+        echo '<option value="0">' . esc_html__('Select content', 'goody') . '</option>';
+        foreach ($posts as $post_item) {
+            if (! $post_item instanceof WP_Post) {
+                continue;
+            }
+            $label = get_the_title($post_item);
+            if ($label === '') {
+                $label = __('(No title)', 'goody');
+            }
+            $type_obj = get_post_type_object($post_item->post_type);
+            $type_label = $type_obj && isset($type_obj->labels->singular_name)
+                ? (string) $type_obj->labels->singular_name
+                : ucfirst((string) $post_item->post_type);
+            $option_label = $label . ' [' . $type_label . ']';
+            echo '<option value="' . esc_attr((string) $post_item->ID) . '" ' . selected((string) $value, (string) $post_item->ID, false) . '>' . esc_html($option_label) . '</option>';
+        }
+        echo '</select>';
     } else {
         $input_type = in_array($type, ['text', 'email', 'number'], true) ? $type : 'text';
         if ($type === 'url') {
@@ -1201,6 +1412,21 @@ function goody_print_dynamic_css() {
 
     $overlay = max(0, min(100, (int) ($options['hero_overlay_strength'] ?? 60))) / 100;
     $vars = [
+        'primary-color' => $css_value('token_color_primary', '#a3db3f'),
+        'secondary-green-color' => $css_value('token_color_primary_2', '#4fa93c'),
+        'primary-hover-color' => $css_value('token_color_primary_hover', '#b8e567'),
+        'button-text-color' => $css_value('token_color_button_text', '#07200f'),
+        'reservation-button-color' => $css_value('reservation_button_color', '#4e2d1c'),
+        'reservation-accent-color' => $css_value('reservation_accent_color', '#ff9b54'),
+        'deep-background-color' => $css_value('token_color_bg_deep', '#020906'),
+        'background-color' => $css_value('token_color_bg', '#07160f'),
+        'soft-background-color' => $css_value('token_color_bg_soft', '#10251b'),
+        'section-color' => $css_value('token_color_section', '#072a1d'),
+        'card-color' => $css_value('token_color_card', '#0a1913'),
+        'soft-card-color' => $css_value('token_color_card_soft', '#0f2d20'),
+        'surface-color' => $css_value('token_color_surface', '#153024'),
+        'text-color' => $css_value('token_color_text', '#f4f2e8'),
+        'muted-color' => $css_value('token_color_muted', '#b5c3b8'),
         'color-primary' => $css_value('token_color_primary', '#a3db3f'),
         'color-primary-2' => $css_value('token_color_primary_2', '#4fa93c'),
         'color-primary-hover' => $css_value('token_color_primary_hover', '#b8e567'),
@@ -1245,14 +1471,46 @@ function goody_print_dynamic_css() {
         echo '--' . esc_html($var_name) . ':' . $var_value . ';';
     }
     $dynamic_css = [
-        '}body{font-family:var(--font-body);color:var(--color-text);background:radial-gradient(circle at 84% 6%,color-mix(in srgb,var(--color-primary) 14%,transparent),transparent 25%),radial-gradient(circle at 12% 18%,color-mix(in srgb,var(--color-primary-2) 11%,transparent),transparent 24%),linear-gradient(180deg,var(--color-bg-deep) 0%,var(--color-bg) 42%,var(--color-section) 100%);}',
-        'h1,h2,h3,h4,h5{font-family:var(--font-heading);}.hero__headline-line--accent,.accent-italic{font-family:var(--font-accent);color:var(--color-primary);}.eyebrow,.site-title,a:hover{color:var(--color-primary);}',
+        '--color-primary:var(--primary-color);--color-primary-2:var(--secondary-green-color);--color-primary-hover:var(--primary-hover-color);--color-button-text:var(--button-text-color);--color-bg-deep:var(--deep-background-color);--color-bg:var(--background-color);--color-bg-soft:var(--soft-background-color);--color-section:var(--section-color);--color-card:var(--card-color);--color-card-soft:var(--soft-card-color);--color-surface:var(--surface-color);--color-text:var(--text-color);--color-muted:var(--muted-color);}',
+        'body{font-family:var(--font-body);color:var(--color-text);background:radial-gradient(circle at 84% 6%,color-mix(in srgb,var(--color-primary) 14%,transparent),transparent 25%),radial-gradient(circle at 12% 18%,color-mix(in srgb,var(--color-primary-2) 11%,transparent),transparent 24%),linear-gradient(180deg,var(--color-bg-deep) 0%,var(--color-bg) 42%,var(--color-section) 100%);}',
+        '.hero::before{background-image:linear-gradient(color-mix(in srgb,var(--color-primary) 8%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--color-primary) 8%,transparent) 1px,transparent 1px);opacity:.32;}',
+        '.hero::after{background:radial-gradient(circle at 82% 56%,color-mix(in srgb,var(--color-primary-2) 24%,transparent),transparent 18%),radial-gradient(circle at 72% 9%,color-mix(in srgb,var(--color-primary) 18%,transparent),transparent 16%);}',
+        '.hero__overlay{background:linear-gradient(92deg,color-mix(in srgb,var(--color-bg) 82%,var(--color-bg-deep) 18%) 0%,color-mix(in srgb,var(--color-bg) 68%,var(--color-bg-deep) 32%) 48%,color-mix(in srgb,var(--color-bg) 52%,var(--color-bg-deep) 48%) 100%);}',
+        '.hero__headline-line{color:color-mix(in srgb,var(--color-text) 96%,var(--color-card) 4%);} .hero__headline-line--accent{color:color-mix(in srgb,var(--color-primary) 82%,var(--color-primary-2) 18%);} .hero__eyebrow{color:color-mix(in srgb,var(--color-primary) 58%,var(--color-text) 42%);} .hero__eyebrow-line{background:color-mix(in srgb,var(--color-primary) 62%,transparent);} ',
+        '.hero__content p{color:color-mix(in srgb,var(--color-text) 52%,var(--color-muted) 48%);} .hero-stat__value{color:color-mix(in srgb,var(--color-text) 90%,var(--color-card) 10%);} .hero-stat__label{color:color-mix(in srgb,var(--color-text) 62%,var(--color-muted) 38%);} .hero__content .button--ghost,.hero__content .button--outline,.hero__content .button--hero-secondary{color:var(--color-text);border-color:color-mix(in srgb,var(--color-primary) 24%,var(--color-border));background:color-mix(in srgb,var(--color-card) 82%,transparent);} .hero__content .button--ghost svg,.hero__content .button--outline svg,.hero__content .button--hero-secondary svg{fill:currentColor;color:currentColor;} .hero__content .button--ghost:hover,.hero__content .button--outline:hover,.hero__content .button--hero-secondary:hover{color:color-mix(in srgb,var(--color-text) 92%,var(--color-card) 8%);border-color:color-mix(in srgb,var(--color-primary) 40%,var(--color-border));background:color-mix(in srgb,var(--color-card) 90%,transparent);} ',
+        '.hero-stat__icon{border-color:color-mix(in srgb,var(--color-primary) 32%,transparent);background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--color-primary) 24%,transparent),color-mix(in srgb,var(--color-bg-deep) 92%,transparent));color:color-mix(in srgb,var(--color-primary) 66%,var(--color-text) 34%);} .hero-stat--clock .hero-stat__icon{color:color-mix(in srgb,var(--color-text) 74%,var(--color-muted) 26%);} .hero-stat--delivery .hero-stat__icon,.hero-stat--calendar .hero-stat__icon{color:color-mix(in srgb,var(--color-primary) 72%,var(--reservation-accent-color) 28%);} ',
+        '.hero__review-chip,.hero__visual-note{background:color-mix(in srgb,var(--color-bg-deep) 92%,transparent);border-color:color-mix(in srgb,var(--color-primary) 24%,var(--color-border));}',
+        '.hero__review-chip{left:1rem;bottom:1rem;}.hero__visual-note{right:.7rem;bottom:.7rem;}',
+        '.hero__review-chip strong,.hero__visual-note strong{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:color-mix(in srgb,var(--color-text) 92%,var(--color-card) 8%);} .hero__review-chip small,.hero__visual-note small{color:color-mix(in srgb,var(--color-text) 60%,var(--color-muted) 40%);} .hero__visual-note span{color:var(--reservation-accent-color);} .hero__review-stars{color:var(--reservation-accent-color);}',
+        'h1,h2,h3,h4,h5{font-family:var(--font-heading);}.hero__headline-line--accent,.accent-italic{font-family:var(--font-accent);color:var(--color-primary);}.eyebrow,.site-title,a:hover{color:var(--color-primary);} .hero__content a:hover{color:color-mix(in srgb,var(--color-primary) 72%,var(--color-text) 28%);}',
         '.button{background:linear-gradient(180deg,var(--color-primary-hover),var(--color-primary));color:var(--color-button-text);}.button:hover{color:var(--color-button-text);}',
         '.goody-reservation-shell .button,.goody-item-select{background:linear-gradient(180deg,color-mix(in srgb,var(--goody-reservation-button) 86%,white 14%),var(--goody-reservation-button));color:var(--goody-reservation-button-text);}.goody-reservation-shell .button:hover,.goody-item-select:hover{color:var(--goody-reservation-button-text);}',
-        '.button--ghost,.button--outline,.goody-reservation-shell .button--ghost{border-color:var(--color-border);background:color-mix(in srgb,var(--color-bg-soft) 72%,transparent);color:var(--color-text);}',
+        '.button--ghost,.button--outline,.button--hero-secondary,.goody-reservation-shell .button--ghost{border-color:var(--color-border);background:color-mix(in srgb,var(--color-bg-soft) 72%,transparent);color:var(--color-text);} .button--hero-secondary svg,.button--ghost svg,.button--outline svg{fill:currentColor;color:currentColor;}',
         '.card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 72%,transparent),color-mix(in srgb,var(--color-card) 92%,transparent));box-shadow:var(--shadow-soft);}.badge{border-color:color-mix(in srgb,var(--color-primary) 45%,transparent);background:color-mix(in srgb,var(--color-primary) 16%,transparent);color:var(--color-primary-hover);}',
         'input,select,textarea{font-family:var(--font-body);border-color:var(--color-border);background:color-mix(in srgb,var(--color-bg) 82%,transparent);color:var(--color-text);}.site-header{border-color:var(--color-border);background:color-mix(in srgb,var(--color-bg-deep) 86%,transparent);}.site-navigation a{color:var(--color-text);}',
         '#menu,.offers-zone,.reserve-zone,.page-section--soft{background:linear-gradient(180deg,var(--color-bg-deep) 0%,var(--color-bg) 100%);}',
+        '.site-footer,.site-footer *{border-color:var(--color-border);} .site-footer{background:linear-gradient(180deg,color-mix(in srgb,var(--color-bg-deep) 96%,transparent),color-mix(in srgb,var(--color-bg) 94%,transparent));} .site-footer p,.site-footer li,.site-footer a{color:color-mix(in srgb,var(--color-text) 76%,var(--color-muted));}',
+        '.hero,.menu-zone,.about-zone,.reviews-zone,.contact-zone,#events,.offers-zone,.reserve-zone,.reserve-zone--showcase,.page-section{color:var(--color-text);} .hero p,.menu-card-desc,.about-content p,.review-text,.contact-text-value,.delivery-description,.offer-card__content p,.event-card__content p{color:color-mix(in srgb,var(--color-text) 74%,var(--color-muted));}',
+        '.menu-card,.offer-card,.event-card,.team-card,.review-card,.contact-card,.goody-status-card,.goody-sidebar-card,.goody-booking-card,.goody-reservation-panel,.news-card,.account-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 72%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));box-shadow:none;transition:box-shadow .24s ease,transform .24s ease,border-color .24s ease;} .menu-card:hover,.offer-card:hover,.event-card:hover,.team-card:hover,.review-card:hover,.contact-card:hover,.goody-status-card:hover,.goody-sidebar-card:hover,.goody-booking-card:hover,.goody-reservation-panel:hover,.news-card:hover,.account-card:hover{box-shadow:0 16px 34px color-mix(in srgb,var(--color-shadow) 64%,transparent);}',
+        '.section-heading h2,.menu-heading__copy h2{color:color-mix(in srgb,var(--color-text) 92%,var(--color-card) 8%);} .section-heading p,.menu-heading__copy p,.menu-heading__status strong,.menu-heading__status-label{color:color-mix(in srgb,var(--color-text) 66%,var(--color-muted) 34%);} .menu-heading__status{box-shadow:none;transition:box-shadow .24s ease,transform .24s ease,border-color .24s ease;} .menu-heading__status:hover{box-shadow:0 12px 28px color-mix(in srgb,var(--color-shadow) 56%,transparent);}',
+        '.menu-filters{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 58%,transparent),color-mix(in srgb,var(--color-card) 90%,transparent));} .menu-filters__advanced{border-color:color-mix(in srgb,var(--color-primary) 20%,var(--color-border));background:color-mix(in srgb,var(--color-surface) 86%,transparent);} .menu-filters__advanced select,.menu-filters__advanced input,.menu-filters__field span,.menu-filters__check span{color:var(--color-text);}',
+        '.menu-filter-chip{border-color:color-mix(in srgb,var(--color-primary) 18%,var(--color-border));background:color-mix(in srgb,var(--color-card) 88%,transparent);color:color-mix(in srgb,var(--color-text) 80%,var(--color-muted) 20%);} .menu-filter-chip:hover,.menu-filter-chip:focus-visible{border-color:color-mix(in srgb,var(--color-primary) 44%,var(--color-border));background:color-mix(in srgb,var(--color-card) 94%,transparent);} .menu-filter-chip.is-active{border-color:color-mix(in srgb,var(--color-primary) 70%,transparent);background:color-mix(in srgb,var(--color-primary) 18%,transparent);color:var(--color-text);}',
+        '.goody-direct-order-modal__dialog{border-color:color-mix(in srgb,var(--color-primary) 24%,var(--color-border));background:radial-gradient(circle at 88% 0%,color-mix(in srgb,var(--color-primary) 14%,transparent),transparent 34%),linear-gradient(180deg,color-mix(in srgb,var(--color-bg-deep) 94%,transparent),color-mix(in srgb,var(--color-bg) 96%,transparent));} .goody-direct-order-modal__copy h3,.goody-direct-order-modal__copy p,.goody-direct-order-modal__copy span{color:var(--color-text);} .goody-direct-order-form--modal .goody-provider-select span,.goody-direct-order-form--modal .goody-direct-order-form__quantity span{color:color-mix(in srgb,var(--color-text) 72%,var(--color-muted) 28%);} ',
+        '[data-menu-results] .menu-card,[data-menu-results] .card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));} [data-menu-results] .menu-card h3,[data-menu-results] .menu-card h3 a,[data-menu-results] .menu-card__pricing strong{color:var(--color-text);} [data-menu-results] .menu-card p,[data-menu-results] .menu-card__meta span,[data-menu-results] .menu-card__details-label{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);}',
+        '.reserve-zone--showcase,.reserve-showcase{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 78%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .reserve-showcase-kicker{color:color-mix(in srgb,var(--reservation-accent-color) 74%,var(--color-primary) 26%);} .reserve-showcase h2,.reserve-showcase h3,.reserve-showcase strong{color:var(--color-text);} .reserve-showcase p,.reserve-showcase li,.reserve-showcase small,.reserve-showcase span{color:color-mix(in srgb,var(--color-text) 70%,var(--color-muted) 30%);} .reserve-showcase .card,.reserve-showcase__embed,.reserve-booking__panel,.reserve-form,.reserve-embed,.reserve-info,.reserve-delivery-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 72%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
+        '.reserve-delivery-card,.reserve-booking__panel{box-shadow:none;transition:box-shadow .24s ease,transform .24s ease,border-color .24s ease,color .24s ease;} .reserve-delivery-card:hover,.reserve-booking__panel:hover{box-shadow:0 16px 34px color-mix(in srgb,var(--color-shadow) 62%,transparent);} .reserve-delivery-card strong{color:color-mix(in srgb,var(--color-text) 88%,var(--color-card) 12%);} .reserve-delivery-card small{color:color-mix(in srgb,var(--color-text) 62%,var(--color-muted) 38%);} .reserve-delivery-card:hover strong{color:color-mix(in srgb,var(--color-card) 92%,var(--color-text) 8%);} .reserve-delivery-card:hover small{color:color-mix(in srgb,var(--color-card) 74%,var(--color-muted) 26%);} ',
+        '.page-section.about-zone,.about-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 72%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .about-zone .section-heading h2,.about-zone h3,.about-zone strong{color:var(--color-text);} .about-zone .section-heading p,.about-zone p,.about-zone li,.about-zone small,.about-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} .about-zone .card,.about-zone .about-box,.about-zone .about-value-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));box-shadow:none;transition:box-shadow .24s ease,transform .24s ease,border-color .24s ease;} .about-zone .about-box:hover,.about-zone .about-value-card:hover,.about-zone .card:hover{box-shadow:0 16px 34px color-mix(in srgb,var(--color-shadow) 60%,transparent);}',
+        '.page-section.gallery-zone,.gallery-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 76%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .gallery-zone .section-heading h2,.gallery-zone h3,.gallery-zone strong{color:var(--color-text);} .gallery-zone .section-heading p,.gallery-zone p,.gallery-zone li,.gallery-zone small,.gallery-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} .gallery-zone .card,.gallery-zone .goody-mosaic__item,.gallery-zone .gallery-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));} .goody-mosaic{background:linear-gradient(180deg,color-mix(in srgb,var(--color-surface) 74%,transparent),color-mix(in srgb,var(--color-bg) 96%,transparent));border:0;border-radius:0;box-shadow:none;} .goody-mosaic::before{background:radial-gradient(circle at 84% 18%,color-mix(in srgb,var(--color-primary) 14%,transparent),transparent 58%),radial-gradient(circle at 12% 78%,color-mix(in srgb,var(--reservation-accent-color) 12%,transparent),transparent 54%);} ',
+        '.page-section.testimonials-zone,.testimonials-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .testimonials-zone .section-heading h2,.testimonials-zone h3,.testimonials-zone strong{color:var(--color-text);} .testimonials-zone .section-heading p,.testimonials-zone p,.testimonials-zone li,.testimonials-zone small{color:color-mix(in srgb,var(--color-text) 76%,var(--color-muted) 24%);} .testimonials-zone span{color:color-mix(in srgb,var(--color-text) 84%,var(--color-muted) 16%);} .testimonials-zone .card,.testimonials-zone .review-card,.testimonials-zone .testimonial-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));} .testimonials-zone .review-stars,.testimonials-zone .rating-stars{color:var(--reservation-accent-color);}',
+        '.testimonials-zone .card,.testimonials-zone .review-card,.testimonials-zone .testimonial-card,.testimonials-zone .reviews-embed,.testimonials-zone .review-cta__actions{box-shadow:none;transition:box-shadow .24s ease,transform .24s ease,border-color .24s ease;} .testimonials-zone .card:hover,.testimonials-zone .reviews-embed:hover,.testimonials-zone .review-cta__actions:hover{box-shadow:none;} .testimonials-zone .review-card:hover,.testimonials-zone .testimonial-card:hover{box-shadow:0 16px 34px color-mix(in srgb,var(--color-shadow) 60%,transparent);} .testimonials-zone .review-score,.testimonials-zone .review-score strong,.testimonials-zone .review-score span{color:color-mix(in srgb,var(--color-text) 86%,var(--color-card) 14%);} .testimonials-zone .review-score small{color:color-mix(in srgb,var(--color-text) 62%,var(--color-muted) 38%);} ',
+        '.page-section.news-zone,.news-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .news-zone .section-heading h2,.news-zone h3,.news-zone strong{color:var(--color-text);} .news-zone .section-heading p,.news-zone p,.news-zone li,.news-zone small,.news-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} .news-zone .card,.news-zone .news-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
+        '.newsletter-zone,.newsletter-card,.page-section.newsletter-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 72%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .newsletter-card,.newsletter-zone .card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 72%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));} .newsletter-zone h2,.newsletter-zone h3,.newsletter-zone strong,.newsletter-card h2,.newsletter-card h3{color:var(--color-text);} .newsletter-zone p,.newsletter-zone small,.newsletter-zone span,.newsletter-card p{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);}',
+        '#events,.events-zone,.page-section.events-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} #events .section-heading h2,#events h3,#events strong,.events-zone .section-heading h2,.events-zone h3,.events-zone strong{color:var(--color-text);} #events .section-heading p,#events p,#events li,#events small,#events span,.events-zone p,.events-zone small,.events-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} #events .card,#events .event-card,.events-zone .card,.events-zone .event-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
+        '#contact,.contact-zone,.page-section.contact-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} #contact .section-heading h2,#contact h3,#contact strong,.contact-zone .section-heading h2,.contact-zone h3,.contact-zone strong{color:var(--color-text);} #contact .section-heading p,#contact p,#contact li,#contact small,#contact span,.contact-zone p,.contact-zone small,.contact-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} #contact .card,#contact .contact-card,.contact-zone .card,.contact-zone .contact-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
+        '.goody-page-section--reservation{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 76%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .goody-page-section--reservation h1,.goody-page-section--reservation h2,.goody-page-section--reservation h3,.goody-page-section--reservation strong{color:var(--color-text);} .goody-page-section--reservation p,.goody-page-section--reservation li,.goody-page-section--reservation small,.goody-page-section--reservation span,.goody-page-section--reservation label{color:color-mix(in srgb,var(--color-text) 70%,var(--color-muted) 30%);} .goody-page-section--reservation .card,.goody-page-section--reservation .goody-booking-card,.goody-page-section--reservation .goody-sidebar-card,.goody-page-section--reservation .goody-status-card,.goody-page-section--reservation .goody-reservation-panel,.goody-page-section--reservation .goody-reservation-shell{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 72%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));} .goody-page-section--reservation .goody-step-counter,.goody-page-section--reservation .goody-reservation-kicker,.goody-page-section--reservation .goody-summary-line--grand strong,.goody-page-section--reservation .goody-summary-line--pay strong{color:var(--reservation-accent-color);}',
+        '.tag,.pill,.badge,.delivery-pill,.event-meta span,.offer-meta span,.event-card__date,.reserve-delivery-card{border-color:color-mix(in srgb,var(--color-primary) 26%,var(--color-border));background:color-mix(in srgb,var(--color-surface) 86%,transparent);color:var(--color-text);}',
+        'input:focus,select:focus,textarea:focus,.goody-search-modal__form input:focus{border-color:color-mix(in srgb,var(--color-primary-hover) 72%,white 28%);box-shadow:0 0 0 3px color-mix(in srgb,var(--color-primary) 22%,transparent);}',
+        '.site-navigation a::before,.goody-search-result__type,.reserve-showcase-kicker,.tracking-step.is-active .tracking-step__dot{color:var(--color-primary);} .button--ghost:hover,.button--outline:hover,.site-navigation.site-navigation--dropdown-enabled .sub-menu a:hover{border-color:color-mix(in srgb,var(--color-primary) 42%,var(--color-border));}',
         '.goody-reservation-shell{font-family:var(--reservation-font-family);background:radial-gradient(circle at 86% 8%,color-mix(in srgb,var(--goody-reservation-accent) 13%,transparent),transparent 24%),linear-gradient(180deg,color-mix(in srgb,var(--color-section) 72%,transparent) 0%,color-mix(in srgb,var(--color-bg) 98%,transparent) 100%);border-color:var(--color-border);}.goody-reservation-shell h2,.goody-reservation-shell h3,.goody-reservation-shell h4{font-family:var(--font-heading);}',
         '.goody-reservation-kicker,.goody-step-counter,.goody-summary-line--grand strong,.goody-summary-line--pay strong{color:var(--goody-reservation-accent);}.goody-filter-pill.is-active,.goody-slot-card.is-selected{background:var(--goody-reservation-button);color:var(--goody-reservation-button-text);}.goody-inline-empty,.goody-notice{background:var(--goody-reservation-accent-soft);border-color:color-mix(in srgb,var(--goody-reservation-accent) 30%,transparent);color:var(--goody-reservation-accent);}',
         '.goody-status-card,.goody-sidebar-card,.goody-reservation-panel,.goody-booking-card{border-color:var(--color-border);background:linear-gradient(180deg,var(--goody-reservation-surface),color-mix(in srgb,var(--color-bg) 96%,transparent));}.goody-booking-card.is-selected{border-color:var(--goody-reservation-accent);box-shadow:0 24px 44px color-mix(in srgb,var(--goody-reservation-accent) 16%,transparent);}',

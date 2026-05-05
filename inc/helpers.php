@@ -209,6 +209,8 @@ function goody_default_options() {
         ]),
         'footer_quick_title' => 'Quick Links',
         'footer_legal_title' => 'Legal',
+        'footer_content_source' => 'theme',
+        'footer_gutenberg_content_id' => '0',
         'footer_payment_icons' => '',
         'footer_copyright' => 'All rights reserved.',
         'seo_home_meta_title' => 'Goody Green | Luxury Brunch Restaurant',
@@ -220,6 +222,8 @@ function goody_default_options() {
         'integrations_serpapi_api_key' => '',
         'integrations_custom_head_code' => '',
         'integrations_custom_footer_code' => '',
+        'design_color_preset' => 'custom',
+        'design_auto_harmony' => '1',
         'token_color_primary' => '#a3db3f',
         'token_color_primary_2' => '#4fa93c',
         'token_color_primary_hover' => '#b8e567',
@@ -790,6 +794,30 @@ function goody_get_showcase_gallery_image_urls($size = 'goody-square', $args = [
 
 function goody_get_payment_icons() {
     return goody_get_gallery_ids('footer_payment_icons');
+}
+
+function goody_get_footer_gutenberg_content_html() {
+    $post_id = absint(goody_get_option('footer_gutenberg_content_id', '0'));
+    if ($post_id < 1) {
+        return '';
+    }
+
+    $post = get_post($post_id);
+    if (! $post instanceof WP_Post || $post->post_status !== 'publish') {
+        return '';
+    }
+
+    $allowed_types = ['wp_block', 'page', 'post'];
+    if (! in_array($post->post_type, $allowed_types, true)) {
+        return '';
+    }
+
+    $content = (string) $post->post_content;
+    if ($content === '') {
+        return '';
+    }
+
+    return (string) apply_filters('the_content', $content);
 }
 
 function goody_get_reservation_url() {

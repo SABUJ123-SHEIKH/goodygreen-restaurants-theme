@@ -773,6 +773,177 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  const searchModal = document.querySelector('[data-goody-search-modal]');
+  if (searchModal && window.goodyTheme && goodyTheme.ajaxUrl) {
+    const headerSearchForm = document.querySelector('[data-goody-search-trigger-form]');
+    const headerSearchInput = headerSearchForm ? headerSearchForm.querySelector('[data-goody-search-trigger-input]') : null;
+    const openSearchButtons = document.querySelectorAll('[data-goody-search-open]');
+    const closeSearchButtons = searchModal.querySelectorAll('[data-goody-search-close]');
+    const searchForm = searchModal.querySelector('[data-goody-search-form]');
+    const searchInput = searchModal.querySelector('[data-goody-search-input]');
+    const searchMeta = searchModal.querySelector('[data-goody-search-meta]');
+    const searchResults = searchModal.querySelector('[data-goody-search-results]');
+    let searchDebounceTimer;
+    let searchRequestToken = 0;
+    let isSearchOpen = false;
+
+    const setSearchMeta = function (message) {
+      if (!searchMeta) return;
+      searchMeta.textContent = String(message || '').trim();
+    };
+
+    const closeSearchModal = function () {
+      if (!isSearchOpen) return;
+      isSearchOpen = false;
+      searchModal.hidden = true;
+      document.body.classList.remove('goody-search-open');
+      if (searchModal._goodyLastFocus && typeof searchModal._goodyLastFocus.focus === 'function') {
+        searchModal._goodyLastFocus.focus();
+      }
+    };
+
+    const openSearchModal = function (trigger) {
+      if (isSearchOpen) return;
+      isSearchOpen = true;
+      searchModal.hidden = false;
+      document.body.classList.add('goody-search-open');
+      searchModal._goodyLastFocus = trigger || document.activeElement;
+
+      if (searchInput) {
+        const initialTerm = String(headerSearchInput && headerSearchInput.value ? headerSearchInput.value : '').trim();
+        searchInput.value = initialTerm;
+        window.setTimeout(function () {
+          searchInput.focus();
+          searchInput.select();
+        }, 24);
+        if (initialTerm.length >= 2) {
+          runSearch(initialTerm);
+        } else if (searchResults) {
+          searchResults.innerHTML = '';
+          setSearchMeta('Start typing to find menu items, offers, events, and posts.');
+        }
+      }
+    };
+
+    const renderLoadingState = function () {
+      if (!searchResults) return;
+      searchResults.classList.add('is-loading');
+    };
+
+    const clearLoadingState = function () {
+      if (!searchResults) return;
+      searchResults.classList.remove('is-loading');
+    };
+
+    const runSearch = function (rawTerm) {
+      const term = String(rawTerm || '').trim();
+      if (!searchResults) return;
+      if (term.length < 2) {
+        searchResults.innerHTML = '';
+        setSearchMeta('Type at least 2 characters to search.');
+        clearLoadingState();
+        return;
+      }
+
+      const requestToken = searchRequestToken + 1;
+      searchRequestToken = requestToken;
+      renderLoadingState();
+      setSearchMeta('Searching...');
+
+      const formData = new FormData();
+      formData.append('action', 'goody_search');
+      formData.append('nonce', goodyTheme.nonce || '');
+      formData.append('q', term);
+
+      fetch(goodyTheme.ajaxUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData
+      })
+        .then(function (response) {
+          return response.json();
+        })
+        .then(function (payload) {
+          if (requestToken !== searchRequestToken) return;
+          if (!payload || !payload.success || !payload.data) {
+            searchResults.innerHTML = '<div class="card empty-state"><h3>Search unavailable</h3><p>Please try again.</p></div>';
+            setSearchMeta('Search unavailable.');
+            return;
+          }
+
+          const html = String(payload.data.html || '');
+          const count = Number(payload.data.count || 0);
+          searchResults.innerHTML = html;
+          setSearchMeta(count > 0 ? count + ' result' + (count > 1 ? 's' : '') + ' found.' : 'No results found.');
+        })
+        .catch(function () {
+          if (requestToken !== searchRequestToken) return;
+          searchResults.innerHTML = '<div class="card empty-state"><h3>Search unavailable</h3><p>Please check connection and try again.</p></div>';
+          setSearchMeta('Search unavailable.');
+        })
+        .finally(function () {
+          if (requestToken !== searchRequestToken) return;
+          clearLoadingState();
+        });
+    };
+
+    openSearchButtons.forEach(function (button) {
+      button.addEventListener('click', function (event) {
+        event.preventDefault();
+        openSearchModal(button);
+      });
+    });
+
+    closeSearchButtons.forEach(function (button) {
+      button.addEventListener('click', function (event) {
+        event.preventDefault();
+        closeSearchModal();
+      });
+    });
+
+    if (headerSearchForm) {
+      headerSearchForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        openSearchModal(headerSearchForm.querySelector('[data-goody-search-open]'));
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', function () {
+        const nextTerm = searchInput.value || '';
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(function () {
+          runSearch(nextTerm);
+        }, 240);
+      });
+    }
+
+    if (searchForm && searchInput) {
+      searchForm.addEventListener('submit', function (event) {
+        const term = String(searchInput.value || '').trim();
+        if (term.length < 2) return;
+        event.preventDefault();
+        runSearch(term);
+      });
+    }
+
+    if (searchResults) {
+      searchResults.addEventListener('click', function (event) {
+        const resultLink = event.target.closest('.goody-search-result');
+        if (!resultLink) return;
+        closeSearchModal();
+      });
+    }
+
+    document.addEventListener('keydown', function (event) {
+      if (!isSearchOpen) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSearchModal();
+      }
+    });
+  }
+
   const filterForm = document.querySelector('.menu-filters');
   const menuResults = document.querySelector('[data-menu-results]');
   const menuCount = document.querySelector('[data-menu-count]');
