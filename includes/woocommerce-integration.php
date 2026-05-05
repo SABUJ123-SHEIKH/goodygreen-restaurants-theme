@@ -6,6 +6,233 @@ function goody_reservation_post_created_sync_record($reservation_id) {
     }
 }
 
+function goody_checkout_section_open($id, $title, $desc = '') {
+    echo '<section class="goody-checkout-section goody-checkout-section--' . esc_attr($id) . '">';
+    echo '<header class="goody-checkout-section__head">';
+    echo '<h3>' . esc_html($title) . '</h3>';
+    if ($desc !== '') {
+        echo '<p>' . esc_html($desc) . '</p>';
+    }
+    echo '</header>';
+    echo '<div class="goody-checkout-section__body">';
+}
+
+function goody_checkout_section_close() {
+    echo '</div></section>';
+}
+
+function goody_checkout_layout_start() {
+    if (! function_exists('is_checkout') || ! is_checkout() || is_order_received_page()) {
+        return;
+    }
+
+    echo '<div class="goody-checkout-layout">';
+}
+add_action('woocommerce_before_checkout_form', 'goody_checkout_layout_start', 6);
+
+function goody_checkout_layout_end() {
+    if (! function_exists('is_checkout') || ! is_checkout() || is_order_received_page()) {
+        return;
+    }
+
+    echo '</div>';
+}
+add_action('woocommerce_after_checkout_form', 'goody_checkout_layout_end', 40);
+
+function goody_checkout_customer_info_section_start() {
+    goody_checkout_section_open('customer', __('Customer Information', 'goody'), __('Contact details used for your order updates.', 'goody'));
+}
+add_action('woocommerce_before_checkout_billing_form', 'goody_checkout_customer_info_section_start', 5);
+
+function goody_checkout_customer_info_section_end() {
+    goody_checkout_section_close();
+}
+add_action('woocommerce_after_checkout_billing_form', 'goody_checkout_customer_info_section_end', 40);
+
+function goody_checkout_delivery_option_section_start() {
+    goody_checkout_section_open('delivery', __('Delivery / Pickup Option', 'goody'), __('Select how you want to receive your order.', 'goody'));
+}
+add_action('woocommerce_before_checkout_shipping_form', 'goody_checkout_delivery_option_section_start', 5);
+
+function goody_checkout_delivery_option_section_end() {
+    goody_checkout_section_close();
+}
+add_action('woocommerce_after_checkout_shipping_form', 'goody_checkout_delivery_option_section_end', 40);
+
+function goody_checkout_additional_address_section_start() {
+    goody_checkout_section_open('address', __('Address Details', 'goody'), __('Add any optional notes for smooth delivery or pickup.', 'goody'));
+}
+add_action('woocommerce_before_order_notes', 'goody_checkout_additional_address_section_start', 5);
+
+function goody_checkout_additional_address_section_end() {
+    goody_checkout_section_close();
+}
+add_action('woocommerce_after_order_notes', 'goody_checkout_additional_address_section_end', 40);
+
+function goody_checkout_summary_section_start() {
+    if (! function_exists('is_checkout') || ! is_checkout() || is_order_received_page()) {
+        return;
+    }
+
+    echo '<aside class="goody-checkout-summary" data-goody-checkout-summary>';
+    echo '<button type="button" class="goody-checkout-summary__toggle" data-goody-summary-toggle aria-expanded="false" aria-controls="goody-order-review-wrap">';
+    echo '<span>' . esc_html__('Order Summary', 'goody') . '</span>';
+    echo '<span class="goody-checkout-summary__toggle-icon" aria-hidden="true">+</span>';
+    echo '</button>';
+    echo '<div class="goody-checkout-summary__content" id="goody-order-review-wrap" data-goody-summary-content>';
+}
+add_action('woocommerce_checkout_before_order_review_heading', 'goody_checkout_summary_section_start', 4);
+
+function goody_checkout_summary_section_end() {
+    if (! function_exists('is_checkout') || ! is_checkout() || is_order_received_page()) {
+        return;
+    }
+
+    echo '</div></aside>';
+}
+add_action('woocommerce_checkout_after_order_review', 'goody_checkout_summary_section_end', 60);
+
+function goody_checkout_coupon_section_title() {
+    echo '<h4 class="goody-checkout-subtitle">' . esc_html__('Coupon / Discount', 'goody') . '</h4>';
+}
+add_action('woocommerce_review_order_before_cart_contents', 'goody_checkout_coupon_section_title', 3);
+
+function goody_checkout_payment_section_title() {
+    echo '<h4 class="goody-checkout-subtitle">' . esc_html__('Payment Method', 'goody') . '</h4>';
+}
+add_action('woocommerce_review_order_before_payment', 'goody_checkout_payment_section_title', 4);
+
+function goody_checkout_payment_trust_badges() {
+    echo '<div class="goody-checkout-trust-badges" aria-label="' . esc_attr__('Secure checkout trust badges', 'goody') . '">';
+    echo '<span class="goody-checkout-trust-badge"><span aria-hidden="true">🔒</span> ' . esc_html__('SSL Protected', 'goody') . '</span>';
+    echo '<span class="goody-checkout-trust-badge"><span aria-hidden="true">✓</span> ' . esc_html__('Secure Payment', 'goody') . '</span>';
+    echo '<span class="goody-checkout-trust-badge"><span aria-hidden="true">🛡</span> ' . esc_html__('Trusted Checkout', 'goody') . '</span>';
+    echo '</div>';
+}
+add_action('woocommerce_review_order_before_submit', 'goody_checkout_payment_trust_badges', 12);
+
+function goody_checkout_confirm_button_caption() {
+    echo '<p class="goody-checkout-confirm-note">' . esc_html__('Final Confirm Order', 'goody') . '</p>';
+}
+add_action('woocommerce_review_order_before_submit', 'goody_checkout_confirm_button_caption', 15);
+
+function goody_dashboard_status_badge($status) {
+    $status = sanitize_key((string) $status);
+    $map = [
+        'pending' => __('Pending', 'goody'),
+        'on-hold' => __('Preparing', 'goody'),
+        'processing' => __('Preparing', 'goody'),
+        'completed' => __('Completed', 'goody'),
+        'cancelled' => __('Cancelled', 'goody'),
+        'failed' => __('Cancelled', 'goody'),
+        'refunded' => __('Cancelled', 'goody'),
+    ];
+
+    $label = isset($map[$status]) ? $map[$status] : ucwords(str_replace('-', ' ', $status));
+    return '<span class="goody-order-status goody-order-status--' . esc_attr($status) . '">' . esc_html($label) . '</span>';
+}
+
+function goody_render_customer_dashboard_cards() {
+    if (! function_exists('is_account_page') || ! is_account_page() || ! is_user_logged_in()) {
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    $user = wp_get_current_user();
+    if (! $user instanceof WP_User) {
+        return;
+    }
+
+    $orders = function_exists('wc_get_orders') ? wc_get_orders([
+        'customer_id' => $user_id,
+        'limit' => 5,
+        'orderby' => 'date',
+        'order' => 'DESC',
+    ]) : [];
+
+    $billing_address = function_exists('wc_get_account_formatted_address') ? wc_get_account_formatted_address('billing') : '';
+    $shipping_address = function_exists('wc_get_account_formatted_address') ? wc_get_account_formatted_address('shipping') : '';
+    $orders_url = function_exists('wc_get_account_endpoint_url') ? wc_get_account_endpoint_url('orders') : '#';
+    $addresses_url = function_exists('wc_get_account_endpoint_url') ? wc_get_account_endpoint_url('edit-address') : '#';
+    $account_details_url = function_exists('wc_get_account_endpoint_url') ? wc_get_account_endpoint_url('edit-account') : '#';
+    $downloads_url = function_exists('wc_get_account_endpoint_url') ? wc_get_account_endpoint_url('downloads') : '#';
+    $support_url = function_exists('goody_get_option') ? goody_get_option('header_cta_url', home_url('/contact/')) : home_url('/contact/');
+    $invoice_url = ! empty($orders) && $orders[0] instanceof WC_Order ? $orders[0]->get_view_order_url() : $orders_url;
+
+    echo '<section class="goody-customer-dashboard">';
+    echo '<header class="goody-customer-dashboard__head">';
+    echo '<h2>' . esc_html__('Customer Dashboard', 'goody') . '</h2>';
+    echo '<p>' . esc_html__('Manage your profile, orders, addresses, and rewards in one place.', 'goody') . '</p>';
+    echo '</header>';
+
+    echo '<div class="goody-customer-dashboard__grid">';
+
+    echo '<article class="goody-dashboard-card">';
+    echo '<h3><span class="goody-dashboard-icon" aria-hidden="true">👤</span>' . esc_html__('Profile Info', 'goody') . '</h3>';
+    echo '<p>' . esc_html($user->display_name) . '<br>' . esc_html($user->user_email) . '</p>';
+    echo '<div class="goody-dashboard-actions"><a class="button button--outline" href="' . esc_url($account_details_url) . '">' . esc_html__('Edit Profile', 'goody') . '</a></div>';
+    echo '</article>';
+
+    echo '<article class="goody-dashboard-card">';
+    echo '<h3><span class="goody-dashboard-icon" aria-hidden="true">🧾</span>' . esc_html__('Recent Orders', 'goody') . '</h3>';
+    if (! empty($orders)) {
+        echo '<ul class="goody-dashboard-order-list">';
+        foreach ($orders as $order) {
+            if (! $order instanceof WC_Order) {
+                continue;
+            }
+            echo '<li>';
+            echo '<span>#' . esc_html((string) $order->get_order_number()) . '</span>';
+            echo goody_dashboard_status_badge($order->get_status());
+            echo '</li>';
+        }
+        echo '</ul>';
+    } else {
+        echo '<p>' . esc_html__('No recent orders found yet.', 'goody') . '</p>';
+    }
+    echo '<div class="goody-dashboard-actions"><a class="button button--outline" href="' . esc_url($orders_url) . '">' . esc_html__('Track Order', 'goody') . '</a></div>';
+    echo '</article>';
+
+    echo '<article class="goody-dashboard-card">';
+    echo '<h3><span class="goody-dashboard-icon" aria-hidden="true">📍</span>' . esc_html__('Saved Addresses', 'goody') . '</h3>';
+    echo '<p>' . ($billing_address !== '' ? wp_kses_post($billing_address) : esc_html__('Billing address not set yet.', 'goody')) . '</p>';
+    if ($shipping_address !== '') {
+        echo '<p>' . wp_kses_post($shipping_address) . '</p>';
+    }
+    echo '<div class="goody-dashboard-actions"><a class="button button--outline" href="' . esc_url($addresses_url) . '">' . esc_html__('Edit Address', 'goody') . '</a></div>';
+    echo '</article>';
+
+    echo '<article class="goody-dashboard-card">';
+    echo '<h3><span class="goody-dashboard-icon" aria-hidden="true">⭐</span>' . esc_html__('Favorite Items', 'goody') . '</h3>';
+    echo '<p>' . esc_html__('Quickly reorder your loved dishes from your previous orders.', 'goody') . '</p>';
+    echo '<div class="goody-dashboard-actions"><a class="button button--outline" href="' . esc_url($orders_url) . '">' . esc_html__('Reorder', 'goody') . '</a></div>';
+    echo '</article>';
+
+    echo '<article class="goody-dashboard-card">';
+    echo '<h3><span class="goody-dashboard-icon" aria-hidden="true">🍽</span>' . esc_html__('Reservation History', 'goody') . '</h3>';
+    echo '<p>' . esc_html__('Review your table reservations and latest reservation-related order activity.', 'goody') . '</p>';
+    echo '<div class="goody-dashboard-actions"><a class="button button--outline" href="' . esc_url($orders_url) . '">' . esc_html__('View Reservation Orders', 'goody') . '</a></div>';
+    echo '</article>';
+
+    echo '<article class="goody-dashboard-card">';
+    echo '<h3><span class="goody-dashboard-icon" aria-hidden="true">🎁</span>' . esc_html__('Loyalty Points / Rewards', 'goody') . '</h3>';
+    echo '<p>' . esc_html__('Reward details are shown by your active loyalty system or plugin.', 'goody') . '</p>';
+    echo '<div class="goody-dashboard-actions"><a class="button button--outline" href="' . esc_url($downloads_url) . '">' . esc_html__('View Rewards', 'goody') . '</a></div>';
+    echo '</article>';
+
+    echo '<article class="goody-dashboard-card">';
+    echo '<h3><span class="goody-dashboard-icon" aria-hidden="true">🧭</span>' . esc_html__('Support / Help', 'goody') . '</h3>';
+    echo '<p>' . esc_html__('Need help with payment, tracking, or reservations? Contact our support team.', 'goody') . '</p>';
+    echo '<div class="goody-dashboard-actions">';
+    echo '<a class="button button--outline" href="' . esc_url($support_url) . '">' . esc_html__('Support', 'goody') . '</a>';
+    echo '<a class="button button--outline" href="' . esc_url($invoice_url) . '">' . esc_html__('View Invoice', 'goody') . '</a>';
+    echo '</div>';
+    echo '</article>';
+
+    echo '</div></section>';
+}
+add_action('woocommerce_account_dashboard', 'goody_render_customer_dashboard_cards', 50);
+
 function goody_sync_reservation_table_after_woocommerce_status($order_id, $old_status, $new_status, $order) {
     if (! $order instanceof WC_Order) {
         $order = wc_get_order($order_id);

@@ -1269,8 +1269,248 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 
-    if (reviewSectionContainer && reviewSectionContainer.getAttribute('data-review-open-default') === '1') {
+  if (reviewSectionContainer && reviewSectionContainer.getAttribute('data-review-open-default') === '1') {
       setReviewModalState(true);
     }
+  }
+
+  const checkoutSummary = document.querySelector('[data-goody-checkout-summary]');
+  const checkoutSummaryToggle = document.querySelector('[data-goody-summary-toggle]');
+  const checkoutSummaryContent = document.querySelector('[data-goody-summary-content]');
+  if (checkoutSummary && checkoutSummaryToggle && checkoutSummaryContent) {
+    const setSummaryState = function (expanded) {
+      checkoutSummaryToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      checkoutSummary.classList.toggle('is-open', expanded);
+      checkoutSummaryContent.hidden = !expanded && window.innerWidth <= 900;
+    };
+
+    setSummaryState(window.innerWidth > 900);
+
+    checkoutSummaryToggle.addEventListener('click', function () {
+      const isExpanded = checkoutSummaryToggle.getAttribute('aria-expanded') === 'true';
+      setSummaryState(!isExpanded);
+    });
+
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 900) {
+        setSummaryState(true);
+      } else {
+        setSummaryState(checkoutSummary.classList.contains('is-open'));
+      }
+    });
+  }
+
+  const checkoutForm = document.querySelector('form.checkout');
+  if (checkoutForm) {
+    const phoneField = checkoutForm.querySelector('#billing_phone');
+    const emailField = checkoutForm.querySelector('#billing_email');
+    const addressField = checkoutForm.querySelector('#billing_address_1');
+    const placeOrderButton = checkoutForm.querySelector('#place_order');
+    const phoneBlocked = new Set(['00000000', '11111111', '12345678', '99999999', '0123456789']);
+
+    const ensureMessageNode = function (field) {
+      if (!field) return null;
+      const wrap = field.closest('.form-row') || field.parentElement;
+      if (!wrap) return null;
+      let message = wrap.querySelector('.goody-inline-error');
+      if (!message) {
+        message = document.createElement('small');
+        message.className = 'goody-inline-error';
+        wrap.appendChild(message);
+      }
+      return message;
+    };
+
+    const setFieldState = function (field, valid, messageText) {
+      if (!field) return;
+      field.setAttribute('aria-invalid', valid ? 'false' : 'true');
+      const message = ensureMessageNode(field);
+      if (!message) return;
+      message.textContent = valid ? '' : messageText;
+      message.hidden = valid;
+    };
+
+    const validatePhone = function () {
+      if (!phoneField) return true;
+      const raw = String(phoneField.value || '').trim();
+      if (!raw) {
+        setFieldState(phoneField, false, 'Phone number is required.');
+        return false;
+      }
+      if (!/^[0-9+\-\s]+$/.test(raw)) {
+        setFieldState(phoneField, false, 'Use only numbers, +, space, or hyphen.');
+        return false;
+      }
+      const digits = raw.replace(/\D+/g, '');
+      if (digits.length < 8 || digits.length > 15) {
+        setFieldState(phoneField, false, 'Phone number must be 8 to 15 digits.');
+        return false;
+      }
+      if (phoneBlocked.has(digits) || /^(\d)\1{7,}$/.test(digits)) {
+        setFieldState(phoneField, false, 'Please enter a real phone number.');
+        return false;
+      }
+      setFieldState(phoneField, true, '');
+      return true;
+    };
+
+    const validateEmail = function () {
+      if (!emailField) return true;
+      const raw = String(emailField.value || '').trim();
+      if (!raw) {
+        setFieldState(emailField, false, 'Email address is required.');
+        return false;
+      }
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
+      setFieldState(emailField, emailOk, emailOk ? '' : 'Please enter a valid email address.');
+      return emailOk;
+    };
+
+    const validateAddress = function () {
+      if (!addressField) return true;
+      const raw = String(addressField.value || '').trim();
+      const ok = raw.length > 0;
+      setFieldState(addressField, ok, ok ? '' : 'Full address is required.');
+      return ok;
+    };
+
+    const validateCheckoutForm = function () {
+      const ok = validatePhone() && validateEmail() && validateAddress();
+      if (placeOrderButton) {
+        placeOrderButton.disabled = !ok;
+        placeOrderButton.classList.toggle('is-disabled', !ok);
+      }
+      return ok;
+    };
+
+    [phoneField, emailField, addressField].forEach(function (field) {
+      if (!field) return;
+      field.addEventListener('input', validateCheckoutForm);
+      field.addEventListener('change', validateCheckoutForm);
+      field.addEventListener('blur', validateCheckoutForm);
+    });
+
+    checkoutForm.addEventListener('submit', function (event) {
+      if (validateCheckoutForm()) return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    validateCheckoutForm();
+  }
+
+  const blockCheckout = document.querySelector('.wp-block-woocommerce-checkout');
+  if (blockCheckout) {
+    const hideFieldSelectors = [
+      '.wc-block-components-address-form__first_name',
+      '.wc-block-components-address-form__last_name',
+      '.wc-block-components-address-form__company',
+      '.wc-block-components-address-form__country',
+      '.wc-block-components-address-form__address_2',
+      '.wc-block-components-address-form__city',
+      '.wc-block-components-address-form__state',
+      '.wc-block-components-address-form__postcode',
+      '.wc-block-components-checkout-step--additional-information',
+      '.wc-block-checkout__shipping-fields'
+    ];
+
+    let blockRulesApplying = false;
+    let blockRulesQueued = false;
+
+    const queueBlockRules = function () {
+      if (blockRulesQueued) return;
+      blockRulesQueued = true;
+      window.requestAnimationFrame(function () {
+        blockRulesQueued = false;
+        applyBlockCheckoutFieldRules();
+      });
+    };
+
+    const applyBlockCheckoutFieldRules = function () {
+      if (blockRulesApplying) return;
+      blockRulesApplying = true;
+
+      hideFieldSelectors.forEach(function (selector) {
+        blockCheckout.querySelectorAll(selector).forEach(function (node) {
+          if (!node) return;
+          if (node.style.display !== 'none') {
+            node.style.display = 'none';
+          }
+        });
+      });
+
+      // Keep order as Email -> Phone -> Address in Checkout Block forms.
+      blockCheckout.querySelectorAll('.wc-block-components-address-form').forEach(function (form) {
+        const emailField = form.querySelector('.wc-block-components-address-form__email');
+        const phoneField = form.querySelector('.wc-block-components-address-form__phone');
+        const addressField = form.querySelector('.wc-block-components-address-form__address_1');
+
+        if (
+          emailField &&
+          phoneField &&
+          emailField.parentNode === phoneField.parentNode &&
+          emailField.nextElementSibling !== phoneField
+        ) {
+          emailField.parentNode.insertBefore(phoneField, emailField.nextSibling);
+        }
+        if (
+          phoneField &&
+          addressField &&
+          phoneField.parentNode === addressField.parentNode &&
+          phoneField.nextElementSibling !== addressField
+        ) {
+          phoneField.parentNode.insertBefore(addressField, phoneField.nextSibling);
+        }
+
+        const phoneInput = form.querySelector('input[name="billing_phone"]');
+        if (phoneInput) {
+          phoneInput.required = true;
+          phoneInput.setAttribute('aria-required', 'true');
+        }
+
+        if (phoneField) {
+          const phoneLabel = phoneField.querySelector('label');
+          if (phoneLabel) {
+            const cleanedText = String(phoneLabel.textContent || '').replace(/\(optional\)/ig, '').trim();
+            if (cleanedText) {
+              phoneLabel.textContent = cleanedText;
+            }
+          }
+        }
+      });
+
+      const defaults = [
+        { selector: 'input[name="billing_first_name"]', value: 'Customer' },
+        { selector: 'input[name="billing_last_name"]', value: 'Guest' },
+        { selector: 'input[name="billing_city"]', value: 'N/A' },
+        { selector: 'input[name="billing_postcode"]', value: '0000' }
+      ];
+
+      defaults.forEach(function (item) {
+        const input = blockCheckout.querySelector(item.selector);
+        if (!input) return;
+        if (String(input.value || '').trim()) return;
+        input.value = item.value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+
+      const countrySelect = blockCheckout.querySelector('select[name="billing_country"]');
+      if (countrySelect && String(countrySelect.value || '').trim() === '') {
+        const fallbackValue = countrySelect.querySelector('option[value="BD"]') ? 'BD' : (countrySelect.value || '');
+        if (fallbackValue) {
+          countrySelect.value = fallbackValue;
+          countrySelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+
+      blockRulesApplying = false;
+    };
+
+    queueBlockRules();
+    const blockObserver = new MutationObserver(function () {
+      queueBlockRules();
+    });
+    blockObserver.observe(blockCheckout, { childList: true, subtree: true });
   }
 });

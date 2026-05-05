@@ -25,14 +25,7 @@ $timestamp = $event_date ? strtotime($event_date) : time();
                 <?php if ($event_date) : ?><span><?php echo esc_html(date_i18n(get_option('date_format'), $timestamp)); ?></span><?php endif; ?>
                 <?php if ($event_time) : ?><span><?php echo esc_html($event_time); ?></span><?php endif; ?>
             </div>
-
-            <?php if ($cta_url) : ?>
-                <a class="text-link" href="<?php echo esc_url($cta_url); ?>" target="_blank" rel="noopener">
-                    <?php echo esc_html($cta_label ?: __('Learn more', 'goody')); ?>
-                    <span><?php echo goody_svg('arrow'); ?></span>
-                </a>
-            <?php endif; ?>
-            <a class="text-link" href="<?php the_permalink(); ?>">
+            <a class="text-link event-card__details-button" href="<?php the_permalink(); ?>">
                 <?php esc_html_e('View event details', 'goody'); ?>
                 <span><?php echo goody_svg('arrow'); ?></span>
             </a>

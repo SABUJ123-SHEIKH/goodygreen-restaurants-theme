@@ -1145,8 +1145,13 @@ function goody_is_woocommerce_available() {
 
 function goody_get_delivery_provider_choices() {
     return [
+        'restaurant_delivery' => __('Restaurant Delivery', 'goody'),
+        'pickup' => __('Pickup', 'goody'),
+        'foodpanda' => __('Foodpanda', 'goody'),
+        'pathao' => __('Pathao', 'goody'),
+        'ubereats' => __('Uber Eats', 'goody'),
+        // Legacy providers are preserved for backward compatibility in old orders/settings.
         'glovo' => __('Glovo', 'goody'),
-        'ubereats' => __('UberEats', 'goody'),
         'deliveroo' => __('Deliveroo', 'goody'),
     ];
 }
@@ -1597,32 +1602,167 @@ function goody_prepend_checkout_delivery_provider_notice($content) {
 add_filter('the_content', 'goody_prepend_checkout_delivery_provider_notice', 8);
 
 function goody_add_checkout_delivery_provider_field($fields) {
-    if (! goody_cart_needs_delivery_provider()) {
+    if (! is_array($fields)) {
         return $fields;
     }
 
-    $fields['order']['goody_delivery_provider'] = [
-        'type' => 'select',
-        'label' => __('Delivery provider', 'goody'),
-        'required' => true,
-        'class' => ['form-row-wide'],
-        'priority' => 5,
-        'options' => ['' => __('Choose delivery provider', 'goody')] + goody_get_delivery_provider_choices(),
-        'default' => goody_get_cart_delivery_provider(),
-    ];
+    $source_billing = isset($fields['billing']) && is_array($fields['billing']) ? $fields['billing'] : [];
+
+    // Hard-enforce exactly the requested customer fields.
+    $fields['billing'] = [];
+
+    $phone_field = isset($source_billing['billing_phone']) && is_array($source_billing['billing_phone']) ? $source_billing['billing_phone'] : [];
+    $phone_field['label'] = __('Phone Number', 'goody');
+    $phone_field['required'] = true;
+    $phone_field['priority'] = 20;
+    $phone_field['class'] = ['form-row-wide'];
+    $phone_field['placeholder'] = __('e.g. +8801XXXXXXXXX', 'goody');
+    $fields['billing']['billing_phone'] = $phone_field;
+
+    $email_field = isset($source_billing['billing_email']) && is_array($source_billing['billing_email']) ? $source_billing['billing_email'] : [];
+    $email_field['label'] = __('Email Address', 'goody');
+    $email_field['required'] = true;
+    $email_field['priority'] = 10;
+    $email_field['class'] = ['form-row-wide'];
+    $fields['billing']['billing_email'] = $email_field;
+
+    $address_field = isset($source_billing['billing_address_1']) && is_array($source_billing['billing_address_1']) ? $source_billing['billing_address_1'] : [];
+    $address_field['label'] = __('Full Address', 'goody');
+    $address_field['required'] = true;
+    $address_field['priority'] = 30;
+    $address_field['class'] = ['form-row-wide'];
+    $address_field['placeholder'] = __('House, Road, Area, City', 'goody');
+    $fields['billing']['billing_address_1'] = $address_field;
+
+    // Remove extra checkout sections/fields.
+    $fields['shipping'] = [];
+    $fields['order'] = [];
+    $fields['account'] = [];
 
     return $fields;
 }
-add_filter('woocommerce_checkout_fields', 'goody_add_checkout_delivery_provider_field');
+add_filter('woocommerce_checkout_fields', 'goody_add_checkout_delivery_provider_field', 999);
+
+function goody_relax_unneeded_address_requirements($fields) {
+    if (! is_array($fields)) {
+        return $fields;
+    }
+
+    foreach (['first_name', 'last_name', 'company', 'country', 'address_2', 'city', 'state', 'postcode'] as $key) {
+        if (! isset($fields[$key]) || ! is_array($fields[$key])) {
+            continue;
+        }
+        $fields[$key]['required'] = false;
+    }
+
+    if (isset($fields['address_1']) && is_array($fields['address_1'])) {
+        $fields['address_1']['required'] = true;
+    }
+
+    return $fields;
+}
+add_filter('woocommerce_default_address_fields', 'goody_relax_unneeded_address_requirements', 999);
+
+function goody_restrict_billing_field_requirements($fields) {
+    if (! is_array($fields)) {
+        return $fields;
+    }
+
+    if (isset($fields['billing_phone']) && is_array($fields['billing_phone'])) {
+        $fields['billing_phone']['required'] = true;
+    }
+    if (isset($fields['billing_email']) && is_array($fields['billing_email'])) {
+        $fields['billing_email']['required'] = true;
+    }
+    if (isset($fields['billing_address_1']) && is_array($fields['billing_address_1'])) {
+        $fields['billing_address_1']['required'] = true;
+    }
+
+    return $fields;
+}
+add_filter('woocommerce_billing_fields', 'goody_restrict_billing_field_requirements', 999);
+
+function goody_checkout_hide_ship_to_different_address($checked) {
+    return false;
+}
+add_filter('woocommerce_ship_to_different_address_checked', 'goody_checkout_hide_ship_to_different_address', 20);
+
+function goody_is_valid_checkout_phone($phone) {
+    $phone = trim((string) $phone);
+    if ($phone === '') {
+        return false;
+    }
+
+    if (! preg_match('/^[0-9+\-\s]+$/', $phone)) {
+        return false;
+    }
+
+    $digits = preg_replace('/\D+/', '', $phone);
+    if (! is_string($digits)) {
+        return false;
+    }
+    $length = strlen($digits);
+    if ($length < 8 || $length > 15) {
+        return false;
+    }
+
+    $blocked = [
+        '00000000',
+        '11111111',
+        '12345678',
+        '99999999',
+        '0123456789',
+    ];
+    if (in_array($digits, $blocked, true)) {
+        return false;
+    }
+
+    // Block obvious repeated fake patterns like 22222222, 33333333, etc.
+    if (preg_match('/^(\d)\1{7,}$/', $digits)) {
+        return false;
+    }
+
+    return true;
+}
+
+function goody_add_checkout_honeypot_field($checkout) {
+    echo '<div class="goody-checkout-honeypot" aria-hidden="true">';
+    woocommerce_form_field('goody_checkout_website', [
+        'type' => 'text',
+        'label' => __('Leave this field empty', 'goody'),
+        'required' => false,
+        'class' => ['goody-checkout-honeypot__field'],
+        'input_class' => ['goody-checkout-honeypot__input'],
+        'autocomplete' => 'off',
+    ], $checkout->get_value('goody_checkout_website'));
+    echo '</div>';
+}
+add_action('woocommerce_after_order_notes', 'goody_add_checkout_honeypot_field', 25);
 
 function goody_validate_checkout_delivery_provider() {
-    if (! goody_cart_needs_delivery_provider()) {
+    $honeypot = sanitize_text_field((string) wp_unslash($_POST['goody_checkout_website'] ?? ''));
+    if ($honeypot !== '' && function_exists('wc_add_notice')) {
+        wc_add_notice(__('We could not process your request. Please refresh and try again.', 'goody'), 'error');
         return;
     }
 
-    $provider = goody_sanitize_delivery_provider(wp_unslash($_POST['goody_delivery_provider'] ?? ''));
-    if ($provider === '' && function_exists('wc_add_notice')) {
-        wc_add_notice(__('Please choose a delivery provider.', 'goody'), 'error');
+    $phone = sanitize_text_field((string) wp_unslash($_POST['billing_phone'] ?? ''));
+    if ($phone === '' && function_exists('wc_add_notice')) {
+        wc_add_notice(__('Phone number is required.', 'goody'), 'error');
+    } elseif (! goody_is_valid_checkout_phone($phone) && function_exists('wc_add_notice')) {
+        wc_add_notice(__('Please enter a valid phone number (8-15 digits, using only numbers, +, space or hyphen).', 'goody'), 'error');
+    }
+
+    $email = sanitize_email((string) wp_unslash($_POST['billing_email'] ?? ''));
+    if ($email === '' && function_exists('wc_add_notice')) {
+        wc_add_notice(__('Email address is required.', 'goody'), 'error');
+    } elseif (! is_email($email) && function_exists('wc_add_notice')) {
+        wc_add_notice(__('Please enter a valid email address.', 'goody'), 'error');
+    }
+
+    $address = sanitize_text_field((string) wp_unslash($_POST['billing_address_1'] ?? ''));
+    if ($address === '' && function_exists('wc_add_notice')) {
+        wc_add_notice(__('Full address is required.', 'goody'), 'error');
     }
 }
 add_action('woocommerce_checkout_process', 'goody_validate_checkout_delivery_provider');
@@ -1680,6 +1820,40 @@ function goody_add_delivery_provider_to_order_line_item($item, $cart_item_key, $
     $item->add_meta_data(__('Delivery provider', 'goody'), goody_get_delivery_provider_label($provider), true);
 }
 add_action('woocommerce_checkout_create_order_line_item', 'goody_add_delivery_provider_to_order_line_item', 20, 4);
+
+function goody_show_delivery_provider_in_admin_order($order) {
+    if (! $order instanceof WC_Order) {
+        return;
+    }
+
+    $provider = goody_sanitize_delivery_provider((string) $order->get_meta('_goody_delivery_provider', true));
+    if ($provider === '') {
+        return;
+    }
+
+    echo '<p><strong>' . esc_html__('Delivery Provider:', 'goody') . '</strong> ' . esc_html(goody_get_delivery_provider_label($provider)) . '</p>';
+}
+add_action('woocommerce_admin_order_data_after_billing_address', 'goody_show_delivery_provider_in_admin_order', 30);
+
+function goody_show_delivery_provider_in_order_emails($order, $sent_to_admin, $plain_text) {
+    if (! $order instanceof WC_Order) {
+        return;
+    }
+
+    $provider = goody_sanitize_delivery_provider((string) $order->get_meta('_goody_delivery_provider', true));
+    if ($provider === '') {
+        return;
+    }
+
+    $label = goody_get_delivery_provider_label($provider);
+    if ($plain_text) {
+        echo "\n" . __('Delivery Provider:', 'goody') . ' ' . $label . "\n";
+        return;
+    }
+
+    echo '<p><strong>' . esc_html__('Delivery Provider:', 'goody') . '</strong> ' . esc_html($label) . '</p>';
+}
+add_action('woocommerce_email_order_meta', 'goody_show_delivery_provider_in_order_emails', 25, 3);
 
 function goody_clear_checkout_delivery_provider_session() {
     if (function_exists('WC') && WC() && WC()->session) {
