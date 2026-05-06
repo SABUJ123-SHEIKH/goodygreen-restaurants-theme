@@ -34,7 +34,7 @@ function goody_mailchimp_upsert_subscriber($email, $args = []) {
     }
 
     $api_key = trim((string) goody_get_option('integrations_mailchimp_api_key', ''));
-    $audience_id = trim((string) goody_get_option('integrations_mailchimp_audience_id', ''));
+    $audience_id = preg_replace('/\s+/', '', trim((string) goody_get_option('integrations_mailchimp_audience_id', '')));
     $server_prefix = goody_mailchimp_extract_data_center(
         $api_key,
         (string) goody_get_option('integrations_mailchimp_server_prefix', '')
@@ -73,28 +73,66 @@ function goody_mailchimp_upsert_subscriber($email, $args = []) {
         $payload['tags'] = $tags;
     }
 
-    $response = wp_remote_request($endpoint, [
-        'method' => 'PUT',
-        'timeout' => 6,
-        'headers' => [
-            'Authorization' => 'Basic ' . base64_encode('goody:' . $api_key),
-            'Content-Type' => 'application/json',
-        ],
-        'body' => wp_json_encode($payload),
-    ]);
+    $request = static function ($request_payload) use ($endpoint, $api_key) {
+        return wp_remote_request($endpoint, [
+            'method' => 'PUT',
+            'timeout' => 6,
+            'headers' => [
+                'Authorization' => 'Basic ' . base64_encode('goody:' . $api_key),
+                'Content-Type' => 'application/json',
+            ],
+            'body' => wp_json_encode($request_payload),
+        ]);
+    };
+
+    $response = $request($payload);
 
     if (is_wp_error($response)) {
         return $response;
     }
 
     $status_code = (int) wp_remote_retrieve_response_code($response);
+    $body = (string) wp_remote_retrieve_body($response);
+
+    if ($status_code < 200 || $status_code >= 300) {
+        $body_lower = strtolower($body);
+
+        // Some audiences do not have FNAME/PHONE merge fields.
+        // Retry once without merge fields to avoid dropping valid email sync.
+        if (! empty($payload['merge_fields']) && strpos($body_lower, 'merge') !== false) {
+            unset($payload['merge_fields']);
+            $response = $request($payload);
+            if (! is_wp_error($response)) {
+                $status_code = (int) wp_remote_retrieve_response_code($response);
+                $body = (string) wp_remote_retrieve_body($response);
+            } else {
+                return $response;
+            }
+        }
+    }
+
+    if ($status_code < 200 || $status_code >= 300) {
+        // If "subscribed" is rejected by audience policy, fallback to "pending".
+        if (($payload['status'] ?? '') === 'subscribed') {
+            $payload['status'] = 'pending';
+            $payload['status_if_new'] = 'pending';
+            $response = $request($payload);
+            if (! is_wp_error($response)) {
+                $status_code = (int) wp_remote_retrieve_response_code($response);
+                $body = (string) wp_remote_retrieve_body($response);
+            } else {
+                return $response;
+            }
+        }
+    }
+
     if ($status_code < 200 || $status_code >= 300) {
         return new WP_Error(
             'mailchimp_request_failed',
             __('Mailchimp sync failed.', 'goody'),
             [
                 'status_code' => $status_code,
-                'body' => wp_remote_retrieve_body($response),
+                'body' => $body,
             ]
         );
     }
