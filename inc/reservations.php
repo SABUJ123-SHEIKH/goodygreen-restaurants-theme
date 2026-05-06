@@ -2213,7 +2213,7 @@ function goody_render_reservation_menu_cards($menu_items, $categories = [], $sho
                     <div class="goody-booking-card__body">
                         <div class="goody-booking-card__head">
                             <div>
-                                <h4><?php echo esc_html($item['name']); ?></h4>
+                                <h4><a href="<?php echo get_the_permalink(); ?>"><?php echo esc_html($item['name']); ?></a></h4>
                                 <?php if (! goody_is_bengali_context() && $item['bn_name'] !== '') : ?>
                                     <p class="goody-booking-card__subhead"><?php echo esc_html($item['bn_name']); ?></p>
                                 <?php endif; ?>
@@ -3290,6 +3290,8 @@ function goody_handle_print_reservation() {
 
     $summary = (string) get_post_meta($reservation_id, 'goody_reservation_summary_html', true);
     $status = goody_get_reservation_status_label((string) get_post_meta($reservation_id, 'goody_reservation_status', true));
+    $print_body_font = trim((string) goody_get_option('token_font_body', 'Arial, sans-serif'));
+    $print_heading_font = trim((string) goody_get_option('token_font_heading', $print_body_font));
     ?>
     <!doctype html>
     <html>
@@ -3297,8 +3299,9 @@ function goody_handle_print_reservation() {
         <meta charset="utf-8">
         <title><?php echo esc_html(goody_get_reservation_reference($reservation_id)); ?></title>
         <style>
-            body { font-family: Arial, sans-serif; padding: 32px; color: #23170f; }
+            body { font-family: <?php echo esc_html($print_body_font); ?>; padding: 32px; color: #23170f; }
             .print-wrap { max-width: 840px; margin: 0 auto; }
+            h1,h2,h3,h4,h5,h6 { font-family: <?php echo esc_html($print_heading_font); ?>; letter-spacing: -0.02em; }
             h1 { margin-bottom: 8px; }
             .print-status { margin-bottom: 24px; font-weight: 700; }
             .goody-summary-card { border: 1px solid #ddd; border-radius: 16px; padding: 24px; }

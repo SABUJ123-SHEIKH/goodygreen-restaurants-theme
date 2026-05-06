@@ -12,6 +12,96 @@ function goody_get_redirect_with_status($status, $context = 'contact') {
     ], $redirect);
 }
 
+function goody_mailchimp_extract_data_center($api_key, $explicit_prefix = '') {
+    $explicit_prefix = sanitize_key((string) $explicit_prefix);
+    if ($explicit_prefix !== '') {
+        return $explicit_prefix;
+    }
+
+    $api_key = trim((string) $api_key);
+    $parts = explode('-', $api_key);
+    if (count($parts) < 2) {
+        return '';
+    }
+
+    return sanitize_key((string) end($parts));
+}
+
+function goody_mailchimp_upsert_subscriber($email, $args = []) {
+    $email = sanitize_email((string) $email);
+    if (! is_email($email)) {
+        return new WP_Error('invalid_email', __('Invalid subscriber email.', 'goody'));
+    }
+
+    $api_key = trim((string) goody_get_option('integrations_mailchimp_api_key', ''));
+    $audience_id = trim((string) goody_get_option('integrations_mailchimp_audience_id', ''));
+    $server_prefix = goody_mailchimp_extract_data_center(
+        $api_key,
+        (string) goody_get_option('integrations_mailchimp_server_prefix', '')
+    );
+
+    if ($api_key === '' || $audience_id === '' || $server_prefix === '') {
+        return new WP_Error('mailchimp_not_configured', __('Mailchimp settings are incomplete.', 'goody'));
+    }
+
+    $merge_fields = isset($args['merge_fields']) && is_array($args['merge_fields']) ? $args['merge_fields'] : [];
+    $tags = isset($args['tags']) && is_array($args['tags']) ? array_values(array_filter(array_map('sanitize_text_field', $args['tags']))) : [];
+    $status = isset($args['status']) ? sanitize_key((string) $args['status']) : 'subscribed';
+    if (! in_array($status, ['subscribed', 'pending'], true)) {
+        $status = 'subscribed';
+    }
+
+    $member_hash = md5(strtolower($email));
+    $endpoint = sprintf(
+        'https://%s.api.mailchimp.com/3.0/lists/%s/members/%s',
+        rawurlencode($server_prefix),
+        rawurlencode($audience_id),
+        rawurlencode($member_hash)
+    );
+
+    $payload = [
+        'email_address' => $email,
+        'status_if_new' => $status,
+        'status' => $status,
+    ];
+
+    if (! empty($merge_fields)) {
+        $payload['merge_fields'] = $merge_fields;
+    }
+
+    if (! empty($tags)) {
+        $payload['tags'] = $tags;
+    }
+
+    $response = wp_remote_request($endpoint, [
+        'method' => 'PUT',
+        'timeout' => 6,
+        'headers' => [
+            'Authorization' => 'Basic ' . base64_encode('goody:' . $api_key),
+            'Content-Type' => 'application/json',
+        ],
+        'body' => wp_json_encode($payload),
+    ]);
+
+    if (is_wp_error($response)) {
+        return $response;
+    }
+
+    $status_code = (int) wp_remote_retrieve_response_code($response);
+    if ($status_code < 200 || $status_code >= 300) {
+        return new WP_Error(
+            'mailchimp_request_failed',
+            __('Mailchimp sync failed.', 'goody'),
+            [
+                'status_code' => $status_code,
+                'body' => wp_remote_retrieve_body($response),
+            ]
+        );
+    }
+
+    return true;
+}
+
 function goody_handle_contact_form_submission() {
     if (! isset($_POST['goody_contact_nonce']) || ! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['goody_contact_nonce'])), 'goody_contact_submit')) {
         wp_safe_redirect(goody_get_redirect_with_status('invalid_nonce'));
@@ -72,6 +162,15 @@ function goody_handle_contact_form_submission() {
         exit;
     }
 
+    goody_mailchimp_upsert_subscriber($email, [
+        'merge_fields' => [
+            'FNAME' => $name,
+            'PHONE' => $phone,
+        ],
+        'tags' => ['Contact Form'],
+        'status' => 'subscribed',
+    ]);
+
     wp_safe_redirect(goody_get_redirect_with_status('success'));
     exit;
 }
@@ -111,6 +210,11 @@ function goody_handle_newsletter_submission() {
             sprintf(__('Subscriber email: %s', 'goody'), $email)
         );
     }
+
+    goody_mailchimp_upsert_subscriber($email, [
+        'tags' => ['Newsletter'],
+        'status' => 'subscribed',
+    ]);
 
     wp_safe_redirect(goody_get_redirect_with_status('success', 'newsletter'));
     exit;

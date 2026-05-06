@@ -22,11 +22,11 @@
     radial-gradient(circle at 12% 4%, color-mix(in srgb, var(--goody-reservation-accent) 15%, var(--goody-theme-soft-background) 85%), transparent 36%),
     radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--goody-theme-primary) 12%, var(--goody-theme-background) 88%), transparent 40%),
     linear-gradient(180deg, color-mix(in srgb, var(--goody-theme-section) 82%, var(--goody-theme-soft-background) 18%) 0%, color-mix(in srgb, var(--goody-theme-background) 92%, var(--goody-theme-section) 8%) 100%);
-  border: 1px solid var(--goody-reservation-border);
+    border: none;
+    box-shadow: none;
   border-radius: calc(var(--radius-lg, 22px) + 8px);
   padding: clamp(1rem, 2.5vw, 2.25rem);
   color: var(--goody-reservation-text);
-  box-shadow: var(--goody-reservation-shadow);
   font-family: var(--reservation-font-family, "Manrope", sans-serif);
 }
 
@@ -206,10 +206,16 @@
 
 .goody-reservation-panel {
   display: none;
-  border-radius: var(--reservation-card-radius, 28px);
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    background: var(--color-bg) !important;
   padding: clamp(1rem, 2vw, 1.5rem);
 }
-
+ .goody-page-section--reservation .goody-reservation-panel:hover {
+    border: none;
+    box-shadow: none;
+}
 .goody-reservation-panel.is-active {
   display: block;
 }
@@ -768,7 +774,8 @@
   gap: 1rem;
 }
 
-.goody-sidebar-card {
+.goody-reservation-shell .goody-sidebar-card {
+  background: var(--card-color) !important;
   border-radius: var(--reservation-card-radius, 28px);
   padding: 1.15rem;
 }
@@ -869,13 +876,22 @@
 .goody-reservation-shell--status {
   max-width: 1180px;
   margin: 0 auto;
+  padding: 0;
+  background: transparent;
 }
 
 .goody-status-app--combined {
   display: grid;
   gap: 1.2rem;
+  border: none;
+  border-radius: 0;
+  box-shadow: 0 0 0 0;
+  background: transparent;
+  padding: 0;
 }
-
+.goody-reservation-shell.goody-reservation-shell--status{
+      background: transparent;
+}
 .goody-status-layout {
   display: grid;
   grid-template-columns: minmax(350px, 0.82fr) minmax(0, 1.1fr);
@@ -912,7 +928,9 @@
 .goody-status-card .tracking-orders-list {
   margin-inline: 0;
 }
-
+.goody-status-card .tracking-box.tracking-box--primary.tracking-box--page{
+ background: var(--card-color) !important;
+}
 .goody-status-card .tracking-info-grid {
   overflow: hidden;
   border: 1px solid var(--goody-reservation-border);

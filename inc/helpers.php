@@ -220,6 +220,9 @@ function goody_default_options() {
         'integrations_reviews_api_key' => '',
         'integrations_google_reviews_api_key' => '',
         'integrations_serpapi_api_key' => '',
+        'integrations_mailchimp_api_key' => '',
+        'integrations_mailchimp_audience_id' => '',
+        'integrations_mailchimp_server_prefix' => '',
         'integrations_custom_head_code' => '',
         'integrations_custom_footer_code' => '',
         'design_color_preset' => 'custom',
@@ -495,9 +498,123 @@ function goody_primary_menu_classes($classes, $item, $args, $depth) {
 }
 add_filter('nav_menu_css_class', 'goody_primary_menu_classes', 10, 4);
 
+function goody_get_menu_item_image_id($item_id) {
+    return absint(get_post_meta((int) $item_id, '_goody_menu_item_image_id', true));
+}
+
+function goody_primary_menu_item_image_field($item_id, $item) {
+    $image_id = goody_get_menu_item_image_id($item_id);
+    $image_url = $image_id > 0 ? wp_get_attachment_image_url($image_id, 'thumbnail') : '';
+    ?>
+    <p class="description description-wide goody-menu-image-field">
+        <label for="edit-menu-item-goody-image-<?php echo esc_attr((string) $item_id); ?>">
+            <?php esc_html_e('Submenu image (optional)', 'goody'); ?><br>
+            <input type="hidden" class="widefat code edit-menu-item-goody-image-id" id="edit-menu-item-goody-image-<?php echo esc_attr((string) $item_id); ?>" name="menu-item-goody-image-id[<?php echo esc_attr((string) $item_id); ?>]" value="<?php echo esc_attr((string) $image_id); ?>">
+            <span class="goody-menu-image-preview-wrap" style="display:block;margin:8px 0;">
+                <?php if ($image_url) : ?>
+                    <img src="<?php echo esc_url($image_url); ?>" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:999px;border:1px solid #d0d6d2;">
+                <?php endif; ?>
+            </span>
+            <button type="button" class="button goody-menu-image-select"><?php esc_html_e('Select image', 'goody'); ?></button>
+            <button type="button" class="button goody-menu-image-remove"<?php echo $image_id > 0 ? '' : ' style="display:none;"'; ?>><?php esc_html_e('Remove image', 'goody'); ?></button>
+        </label>
+    </p>
+    <?php
+}
+add_action('wp_nav_menu_item_custom_fields', 'goody_primary_menu_item_image_field', 10, 2);
+
+function goody_save_primary_menu_item_image($menu_id, $menu_item_db_id) {
+    if (! isset($_POST['menu-item-goody-image-id']) || ! is_array($_POST['menu-item-goody-image-id'])) {
+        delete_post_meta((int) $menu_item_db_id, '_goody_menu_item_image_id');
+        return;
+    }
+
+    $raw = wp_unslash($_POST['menu-item-goody-image-id']);
+    $image_id = absint($raw[$menu_item_db_id] ?? 0);
+    if ($image_id > 0) {
+        update_post_meta((int) $menu_item_db_id, '_goody_menu_item_image_id', $image_id);
+        return;
+    }
+
+    delete_post_meta((int) $menu_item_db_id, '_goody_menu_item_image_id');
+}
+add_action('wp_update_nav_menu_item', 'goody_save_primary_menu_item_image', 10, 2);
+
+function goody_primary_menu_admin_image_picker_script($hook_suffix) {
+    if ($hook_suffix !== 'nav-menus.php') {
+        return;
+    }
+
+    wp_enqueue_media();
+    wp_add_inline_script(
+        'jquery-core',
+        '(function($){
+            function bindMenuImagePicker($scope) {
+                $scope.find(".goody-menu-image-select").off("click.goodyMenuImage").on("click.goodyMenuImage", function(e){
+                    e.preventDefault();
+                    var $button = $(this);
+                    var $field = $button.closest(".goody-menu-image-field");
+                    var $input = $field.find(".edit-menu-item-goody-image-id");
+                    var $previewWrap = $field.find(".goody-menu-image-preview-wrap");
+                    var $remove = $field.find(".goody-menu-image-remove");
+                    var frame = wp.media({
+                        title: "Select submenu image",
+                        button: { text: "Use image" },
+                        multiple: false,
+                        library: { type: "image" }
+                    });
+                    frame.on("select", function(){
+                        var selection = frame.state().get("selection").first();
+                        if (!selection) {
+                            return;
+                        }
+                        var data = selection.toJSON();
+                        var thumb = data.sizes && data.sizes.thumbnail ? data.sizes.thumbnail.url : data.url;
+                        $input.val(data.id || "");
+                        $previewWrap.html(\'<img src="\' + thumb + \'" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:999px;border:1px solid #d0d6d2;">\');
+                        $remove.show();
+                    });
+                    frame.open();
+                });
+
+                $scope.find(".goody-menu-image-remove").off("click.goodyMenuImage").on("click.goodyMenuImage", function(e){
+                    e.preventDefault();
+                    var $field = $(this).closest(".goody-menu-image-field");
+                    $field.find(".edit-menu-item-goody-image-id").val("");
+                    $field.find(".goody-menu-image-preview-wrap").empty();
+                    $(this).hide();
+                });
+            }
+
+            $(document).ready(function(){ bindMenuImagePicker($(document)); });
+            $(document).on("menu-item-added", function(e, menuItem){ bindMenuImagePicker($(menuItem)); });
+        })(jQuery);'
+    );
+}
+add_action('admin_enqueue_scripts', 'goody_primary_menu_admin_image_picker_script');
+
 function goody_primary_menu_item_description($item_output, $item, $depth, $args) {
     if (! goody_is_primary_nav_menu_args($args)) {
         return $item_output;
+    }
+
+    if ((int) $depth > 0) {
+        $image_id = goody_get_menu_item_image_id($item->ID ?? 0);
+        if ($image_id > 0) {
+            $thumb = wp_get_attachment_image(
+                $image_id,
+                'goody-chip',
+                false,
+                [
+                    'class' => 'menu-item-thumb',
+                    'loading' => 'lazy',
+                    'decoding' => 'async',
+                ]
+            );
+            if (is_string($thumb) && $thumb !== '') {
+                $item_output = preg_replace('/(<a\b[^>]*>)/', '$1' . $thumb, $item_output, 1);
+            }
+        }
     }
 
     $description = trim((string) ($item->description ?? ''));

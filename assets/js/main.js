@@ -771,6 +771,47 @@ document.addEventListener('DOMContentLoaded', function () {
       toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       document.body.classList.toggle('nav-open', isOpen);
     });
+
+    const initMobileDropdownToggles = function () {
+      const mobileQuery = window.matchMedia('(max-width: 980px)');
+      const parentItems = nav.querySelectorAll('.menu-item-has-children, .page_item_has_children');
+
+      parentItems.forEach(function (item) {
+        const directLink = item.querySelector(':scope > a');
+        const subMenu = item.querySelector(':scope > .sub-menu');
+        if (!directLink || !subMenu || item.querySelector(':scope > .goody-submenu-toggle')) {
+          return;
+        }
+
+        const toggleButton = document.createElement('button');
+        toggleButton.type = 'button';
+        toggleButton.className = 'goody-submenu-toggle';
+        toggleButton.setAttribute('aria-label', 'Toggle submenu');
+        toggleButton.setAttribute('aria-expanded', 'false');
+        if (!subMenu.id) {
+          subMenu.id = 'goody-submenu-' + Math.random().toString(36).slice(2, 10);
+        }
+        toggleButton.setAttribute('aria-controls', subMenu.id);
+        directLink.insertAdjacentElement('afterend', toggleButton);
+
+        const setExpanded = function (expanded) {
+          item.classList.toggle('is-submenu-open', expanded);
+          toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        };
+
+        toggleButton.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!mobileQuery.matches) return;
+          const expanded = item.classList.contains('is-submenu-open');
+          setExpanded(!expanded);
+        });
+
+        setExpanded(false);
+      });
+    };
+
+    initMobileDropdownToggles();
   }
 
   const searchModal = document.querySelector('[data-goody-search-modal]');
