@@ -22,89 +22,19 @@ if ($header_reserve_text === '') {
     $header_reserve_text = __('Reserve', 'goody');
 }
 $language_switcher_markup = '';
-$language_items = [];
-$short_language_code = static function ($value) {
-    $label = strtoupper(preg_replace('/[^A-Z]/', '', (string) $value));
-    if ($label === '') {
-        return '';
-    }
-
-    return strlen($label) > 3 ? substr($label, 0, 3) : $label;
-};
-
-if (function_exists('pll_the_languages')) {
-    $pll_languages = pll_the_languages([
-        'raw' => 1,
-        'hide_if_empty' => 0,
-        'hide_if_no_translation' => 0,
-        'hide_current' => 0,
-    ]);
-
-    if (is_array($pll_languages) && ! empty($pll_languages)) {
-        foreach ($pll_languages as $lang) {
-            if (! is_array($lang) || empty($lang['url'])) {
-                continue;
-            }
-
-            $name = sanitize_text_field((string) ($lang['name'] ?? $lang['translated_name'] ?? ''));
-            $label = $short_language_code($lang['slug'] ?? '');
-            if ($label === '') {
-                $label = $short_language_code($lang['locale'] ?? '');
-            }
-            if ($label === '' && $name !== '') {
-                $label = $short_language_code($name);
-            }
-            if ($label === '') {
-                continue;
-            }
-
-            $language_items[] = [
-                'url' => esc_url((string) $lang['url']),
-                'name' => $name ?: $label,
-                'label' => $label,
-                'current' => ! empty($lang['current_lang']),
-            ];
-        }
-    }
+if (function_exists('goody_get_language_switcher_items')) {
+    $language_items = goody_get_language_switcher_items();
 } else {
-    $wpml_languages = apply_filters('wpml_active_languages', null, [
-        'skip_missing' => 0,
-        'orderby' => 'code',
-    ]);
-
-    if (is_array($wpml_languages) && ! empty($wpml_languages)) {
-        foreach ($wpml_languages as $lang) {
-            if (! is_array($lang) || empty($lang['url'])) {
-                continue;
-            }
-
-            $name = sanitize_text_field((string) ($lang['translated_name'] ?? $lang['native_name'] ?? ''));
-            $label = $short_language_code($lang['code'] ?? ($lang['language_code'] ?? ''));
-            if ($label === '' && $name !== '') {
-                $label = $short_language_code($name);
-            }
-            if ($label === '') {
-                continue;
-            }
-
-            $language_items[] = [
-                'url' => esc_url((string) $lang['url']),
-                'name' => $name ?: $label,
-                'label' => $label,
-                'current' => ! empty($lang['active']),
-            ];
-        }
-    }
+    $language_items = [];
 }
-
 if (! empty($language_items)) {
-    $language_switcher_markup .= '<ul class="header-language__list" role="list">';
+    $language_switcher_markup .= '<label class="screen-reader-text" for="goody-language-switcher">' . esc_html__('Select language', 'goody') . '</label>';
+    $language_switcher_markup .= '<select id="goody-language-switcher" class="header-language__select" aria-label="' . esc_attr__('Select language', 'goody') . '" onchange="if(this.value){window.location.href=this.value;}">';
     foreach ($language_items as $item) {
-        $current_class = $item['current'] ? ' class="is-current"' : '';
-        $aria_current = $item['current'] ? ' aria-current="page"' : '';
-        $language_switcher_markup .= '<li><a' . $current_class . ' href="' . $item['url'] . '" title="' . esc_attr($item['name']) . '"' . $aria_current . '>' . esc_html($item['label']) . '</a></li>';
+        $selected = ! empty($item['current']) ? ' selected' : '';
+        $language_switcher_markup .= '<option value="' . esc_url((string) $item['url']) . '"' . $selected . '>' . esc_html((string) ($item['flag'] ?? '🌐')) . '</option>';
     }
-    $language_switcher_markup .= '</ul>';
+    $language_switcher_markup .= '</select>';
 }
 ?><!doctype html>
 <html <?php language_attributes(); ?>>
@@ -144,16 +74,15 @@ if (! empty($language_items)) {
             </div>
 
             <div class="site-navigation__tools">
+                <?php if ($language_switcher_markup) : ?>
+                    <div class="header-language"><?php echo $language_switcher_markup; ?></div>
+                <?php endif; ?>
                 <?php if ($header_search_enabled) : ?>
                     <form role="search" method="get" class="header-search" action="<?php echo esc_url(home_url('/')); ?>" data-goody-search-trigger-form>
                         <label class="screen-reader-text" for="goody-header-search"><?php esc_html_e('Search', 'goody'); ?></label>
                         <input id="goody-header-search" type="search" name="s" value="<?php echo esc_attr(get_search_query()); ?>" placeholder="<?php echo esc_attr(goody_get_option('header_search_placeholder', __('Search...', 'goody'))); ?>" data-goody-search-trigger-input>
                         <button type="button" aria-label="<?php esc_attr_e('Open search', 'goody'); ?>" data-goody-search-open><?php echo goody_svg('search'); ?></button>
                     </form>
-                <?php endif; ?>
-
-                <?php if ($language_switcher_markup) : ?>
-                    <div class="header-language"><?php echo $language_switcher_markup; ?></div>
                 <?php endif; ?>
 
                 <?php if ($header_reserve_url) : ?>

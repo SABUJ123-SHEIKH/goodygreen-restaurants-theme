@@ -241,13 +241,13 @@ textarea::placeholder { color: rgba(212, 229, 216, 0.55); }
   align-items: center;
 }
 
-.header-language select {
+.header-language select,
+.header-language__select {
   min-height: 34px;
   border-radius: 999px;
   padding: 0.25rem 0.65rem;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
 }
 
 .header-language__list {
@@ -4678,36 +4678,33 @@ body.goody-search-open {
   align-items: center;
 }
 
-.header-language__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.header-language__list a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 40px;
+.header-language__select {
+  min-width: 58px;
   min-height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  padding: 0.16rem 0.45rem;
+  padding: 0.1rem 1.35rem 0.1rem 0.7rem;
   background: rgba(7, 18, 13, 0.58);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: #dbf2d5;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(219, 242, 213, 0.9) 50%),
+    linear-gradient(135deg, rgba(219, 242, 213, 0.9) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 9px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
 }
 
-.header-language__list a.is-current {
-  border-color: rgba(136, 204, 104, 0.62);
-  background: rgba(136, 204, 104, 0.18);
-  color: #dbf2d5;
+.header-language__select:focus {
+  outline: none;
+  border-color: rgba(136, 204, 104, 0.74);
+  box-shadow: 0 0 0 2px rgba(136, 204, 104, 0.18);
 }
 
 .menu-toggle {
@@ -5234,7 +5231,7 @@ body.goody-search-open {
     pointer-events: auto;
   }
 
-  .header-language__list { justify-content: flex-start; }
+  .header-language__select { min-width: 64px; }
 
   .goody-search-modal__form {
     grid-template-columns: 1fr;

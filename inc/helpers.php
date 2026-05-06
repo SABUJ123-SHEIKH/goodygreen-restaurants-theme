@@ -92,13 +92,13 @@ function goody_default_options() {
         'reservation_delivery_warning' => 'Delivery address is required for delivery orders.',
         'reservation_cash_warning' => 'Cash orders stay reserved and will be confirmed by the restaurant.',
         'reservation_dine_in_note' => 'Dine-in reservations are held for a limited time after the selected slot starts.',
-        'reservation_step_counter_prefix' => 'ধাপ',
-        'reservation_step_title_1' => 'তারিখ',
-        'reservation_step_title_2' => 'মেনু',
-        'reservation_step_title_3' => 'সময়',
-        'reservation_step_title_4' => 'অর্ডার ধরন',
-        'reservation_step_title_5' => 'তথ্য',
-        'reservation_step_title_6' => 'সারাংশ',
+        'reservation_step_counter_prefix' => 'Step',
+        'reservation_step_title_1' => 'Date',
+        'reservation_step_title_2' => 'Menu',
+        'reservation_step_title_3' => 'Time',
+        'reservation_step_title_4' => 'Order Type',
+        'reservation_step_title_5' => 'Information',
+        'reservation_step_title_6' => 'Summary',
         'reservation_order_type_label_dine_in' => 'Dine In',
         'reservation_order_type_label_pickup' => 'Pickup',
         'reservation_order_type_label_delivery' => 'Delivery',
@@ -263,18 +263,323 @@ function goody_get_options() {
     return wp_parse_args((array) get_option('goody_theme_options', []), goody_default_options());
 }
 
+function goody_get_language_code() {
+    static $language_code = null;
+    if ($language_code !== null) {
+        return $language_code;
+    }
+
+    $locale = function_exists('determine_locale') ? determine_locale() : get_locale();
+    $normalized = strtolower(str_replace('-', '_', (string) $locale));
+    $language_code = explode('_', $normalized)[0] ?? 'en';
+
+    if (! in_array($language_code, ['en', 'es', 'ca'], true)) {
+        $language_code = 'en';
+    }
+
+    return $language_code;
+}
+
+function goody_get_language_locale_map() {
+    return [
+        'en' => 'en_US',
+        'es' => 'es_ES',
+        'ca' => 'ca',
+    ];
+}
+
+function goody_get_language_flag_map() {
+    return [
+        'en' => '🇺🇸',
+        'es' => '🇪🇸',
+        'ca' => '🏴',
+    ];
+}
+
+function goody_get_language_label_map() {
+    return [
+        'en' => 'English',
+        'es' => 'Spanish',
+        'ca' => 'Catalan',
+    ];
+}
+
+function goody_get_requested_language_code() {
+    $requested = sanitize_key((string) ($_GET['goody_lang'] ?? ''));
+    if ($requested === '') {
+        return '';
+    }
+
+    $map = goody_get_language_locale_map();
+    return array_key_exists($requested, $map) ? $requested : '';
+}
+
+function goody_get_cookie_language_code() {
+    $cookie = sanitize_key((string) ($_COOKIE['goody_lang'] ?? ''));
+    if ($cookie === '') {
+        return '';
+    }
+
+    $map = goody_get_language_locale_map();
+    return array_key_exists($cookie, $map) ? $cookie : '';
+}
+
+function goody_get_selected_language_code() {
+    $requested = goody_get_requested_language_code();
+    if ($requested !== '') {
+        return $requested;
+    }
+
+    return goody_get_cookie_language_code();
+}
+
+function goody_handle_language_switch_request() {
+    if (is_admin()) {
+        return;
+    }
+
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
+        return;
+    }
+
+    $requested = goody_get_requested_language_code();
+    if ($requested === '') {
+        return;
+    }
+
+    setcookie('goody_lang', $requested, time() + MONTH_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), false);
+    $_COOKIE['goody_lang'] = $requested;
+
+    $redirect_url = remove_query_arg('goody_lang');
+    if (is_string($redirect_url) && $redirect_url !== '') {
+        wp_safe_redirect($redirect_url);
+        exit;
+    }
+}
+add_action('init', 'goody_handle_language_switch_request', 1);
+
+function goody_filter_site_locale($locale) {
+    if (is_admin() && ! wp_doing_ajax()) {
+        return $locale;
+    }
+
+    $selected = goody_get_selected_language_code();
+    if ($selected === '') {
+        return $locale;
+    }
+
+    $map = goody_get_language_locale_map();
+    return $map[$selected] ?? $locale;
+}
+add_filter('locale', 'goody_filter_site_locale', 20);
+add_filter('determine_locale', 'goody_filter_site_locale', 20);
+
+function goody_get_language_switcher_items() {
+    $items = [];
+    $flags = goody_get_language_flag_map();
+    $labels = goody_get_language_label_map();
+    $current_code = goody_get_language_code();
+
+    if (function_exists('pll_the_languages')) {
+        $pll_languages = pll_the_languages([
+            'raw' => 1,
+            'hide_if_empty' => 0,
+            'hide_if_no_translation' => 0,
+            'hide_current' => 0,
+        ]);
+
+        if (is_array($pll_languages) && ! empty($pll_languages)) {
+            foreach ($pll_languages as $lang) {
+                if (! is_array($lang) || empty($lang['url'])) {
+                    continue;
+                }
+
+                $code = sanitize_key((string) ($lang['slug'] ?? ''));
+                $items[] = [
+                    'url' => esc_url((string) $lang['url']),
+                    'name' => sanitize_text_field((string) ($lang['name'] ?? $lang['translated_name'] ?? ($labels[$code] ?? strtoupper($code)))),
+                    'code' => $code !== '' ? strtoupper($code) : 'LANG',
+                    'flag' => $flags[$code] ?? '🌐',
+                    'current' => ! empty($lang['current_lang']),
+                ];
+            }
+        }
+    } elseif (has_filter('wpml_active_languages')) {
+        $wpml_languages = apply_filters('wpml_active_languages', null, [
+            'skip_missing' => 0,
+            'orderby' => 'code',
+        ]);
+
+        if (is_array($wpml_languages) && ! empty($wpml_languages)) {
+            foreach ($wpml_languages as $lang) {
+                if (! is_array($lang) || empty($lang['url'])) {
+                    continue;
+                }
+
+                $code = sanitize_key((string) ($lang['code'] ?? ($lang['language_code'] ?? '')));
+                $items[] = [
+                    'url' => esc_url((string) $lang['url']),
+                    'name' => sanitize_text_field((string) ($lang['translated_name'] ?? $lang['native_name'] ?? ($labels[$code] ?? strtoupper($code)))),
+                    'code' => $code !== '' ? strtoupper($code) : 'LANG',
+                    'flag' => $flags[$code] ?? '🌐',
+                    'current' => ! empty($lang['active']),
+                ];
+            }
+        }
+    }
+
+    if (! empty($items)) {
+        return $items;
+    }
+
+    $request_uri = wp_unslash((string) ($_SERVER['REQUEST_URI'] ?? '/'));
+    $current_url = home_url($request_uri);
+    $current_url = remove_query_arg('goody_lang', $current_url);
+
+    foreach (goody_get_language_locale_map() as $code => $unused_locale) {
+        $items[] = [
+            'url' => esc_url(add_query_arg('goody_lang', $code, $current_url)),
+            'name' => $labels[$code] ?? strtoupper($code),
+            'code' => strtoupper($code),
+            'flag' => $flags[$code] ?? '🌐',
+            'current' => $current_code === $code,
+        ];
+    }
+
+    return $items;
+}
+
+function goody_get_localized_default_option($key) {
+    static $localized_defaults = null;
+
+    if ($localized_defaults === null) {
+        $localized_defaults = [
+            'es' => [
+                'restaurant_tagline' => 'Brunch y mas en Goody',
+                'hero_heading' => 'Brunch de lujo, naturalmente verde',
+                'hero_highlight_text' => 'Brunch',
+                'hero_subheading' => 'Ingredientes premium, recetas con alma y una experiencia refinada.',
+                'hero_primary_text' => 'Pedir ahora',
+                'hero_secondary_text' => 'Ver menu',
+                'menu_section_title' => 'Menu destacado',
+                'menu_section_text' => 'Filtra por categoria y preferencias para encontrar tu plato ideal.',
+                'offers_section_title' => 'Ofertas especiales',
+                'offers_section_text' => 'Promociones diarias y semanales para amantes del brunch.',
+                'order_section_title' => 'Pedido y entrega',
+                'order_section_text' => 'Socios de entrega rapida y pedido directo en un solo lugar.',
+                'reservation_section_title' => 'Reservar mesa',
+                'reservation_section_text' => 'Reserva tu mesa en segundos.',
+                'reservation_button_text' => 'Reservar ahora',
+                'reservation_page_title' => 'Reserva tu mesa o pide tu comida con antelacion',
+                'reservation_status_title' => 'Consulta el estado de tu reserva',
+                'reservation_status_text' => 'Ingresa tu referencia y numero de telefono.',
+                'reservation_next_button_text' => 'Siguiente',
+                'reservation_back_button_text' => 'Atras',
+                'reservation_submit_button_text' => 'Crear reserva',
+                'tracking_title' => 'Rastrea tu pedido',
+                'tracking_description' => 'Sigue tu pedido en tiempo real con nuestro socio de entrega.',
+                'about_story_title' => 'Sobre Goody Green',
+                'about_mission_title' => 'Nuestra mision',
+                'about_vision_title' => 'Nuestra vision',
+                'reviews_section_title' => 'Resenas de clientes',
+                'events_section_title' => 'Proximos eventos',
+                'newsletter_title' => 'Se el primero en enterarte',
+                'contact_section_title' => 'Contacto y ubicacion',
+                'contact_whatsapp_button_text' => 'Escribenos por WhatsApp',
+                'contact_call_button_text' => 'Llamar ahora',
+                'footer_quick_title' => 'Enlaces rapidos',
+                'footer_legal_title' => 'Legal',
+                'footer_copyright' => 'Todos los derechos reservados.',
+            ],
+            'ca' => [
+                'restaurant_tagline' => 'Brunch i mes a Goody',
+                'hero_heading' => 'Brunch de luxe, naturalment verd',
+                'hero_highlight_text' => 'Brunch',
+                'hero_subheading' => 'Ingredients premium, receptes amb anima i una experiencia refinada.',
+                'hero_primary_text' => 'Demanar ara',
+                'hero_secondary_text' => 'Veure menu',
+                'menu_section_title' => 'Menu destacat',
+                'menu_section_text' => 'Filtra per categoria i preferencies per trobar el teu plat ideal.',
+                'offers_section_title' => 'Ofertes especials',
+                'offers_section_text' => 'Promocions diaries i setmanals per amants del brunch.',
+                'order_section_title' => 'Comanda i entrega',
+                'order_section_text' => 'Partners de lliurament rapid i comanda directa en un sol lloc.',
+                'reservation_section_title' => 'Reservar taula',
+                'reservation_section_text' => 'Reserva la teva taula en segons.',
+                'reservation_button_text' => 'Reservar ara',
+                'reservation_page_title' => 'Reserva la teva taula o precomanda el teu apat',
+                'reservation_status_title' => 'Consulta l estat de la teva reserva',
+                'reservation_status_text' => 'Introdueix la referencia i el telefon.',
+                'reservation_next_button_text' => 'Seguent',
+                'reservation_back_button_text' => 'Enrere',
+                'reservation_submit_button_text' => 'Crear reserva',
+                'tracking_title' => 'Segueix la teva comanda',
+                'tracking_description' => 'Segueix la teva comanda en temps real amb el nostre partner.',
+                'about_story_title' => 'Sobre Goody Green',
+                'about_mission_title' => 'La nostra missio',
+                'about_vision_title' => 'La nostra visio',
+                'reviews_section_title' => 'Ressenyes de clients',
+                'events_section_title' => 'Propers esdeveniments',
+                'newsletter_title' => 'Sigues el primer a saber les novetats',
+                'contact_section_title' => 'Contacte i ubicacio',
+                'contact_whatsapp_button_text' => 'WhatsApp',
+                'contact_call_button_text' => 'Trucar ara',
+                'footer_quick_title' => 'Enllacos rapids',
+                'footer_legal_title' => 'Legal',
+                'footer_copyright' => 'Tots els drets reservats.',
+            ],
+        ];
+    }
+
+    $language_code = goody_get_language_code();
+    if (! isset($localized_defaults[$language_code][$key])) {
+        return null;
+    }
+
+    return $localized_defaults[$language_code][$key];
+}
+
 function goody_get_option($key, $default = '') {
-    $options = goody_get_options();
-    if (array_key_exists($key, $options)) {
-        return $options[$key];
+    $raw_options = (array) get_option('goody_theme_options', []);
+    $language_code = goody_get_language_code();
+    $language_keys = [
+        $key . '__' . $language_code,
+        $key . '_' . $language_code,
+    ];
+
+    foreach ($language_keys as $localized_key) {
+        if (! array_key_exists($localized_key, $raw_options)) {
+            continue;
+        }
+        $localized_value = trim((string) $raw_options[$localized_key]);
+        if ($localized_value !== '') {
+            return $raw_options[$localized_key];
+        }
     }
 
     $defaults = goody_default_options();
+    $resolved_default = $default;
+
     if (array_key_exists($key, $defaults)) {
-        return $defaults[$key];
+        $resolved_default = $defaults[$key];
     }
 
-    return $default;
+    $localized_default = goody_get_localized_default_option($key);
+    if (array_key_exists($key, $raw_options)) {
+        $raw_value = trim((string) $raw_options[$key]);
+        if ($raw_value !== '') {
+            if ($localized_default !== null && (string) $raw_options[$key] === (string) $resolved_default) {
+                return $localized_default;
+            }
+            return $raw_options[$key];
+        }
+    }
+
+    if ($localized_default !== null) {
+        return $localized_default;
+    }
+
+    return $resolved_default;
 }
 
 function goody_get_image_url($attachment_id, $size = 'full') {

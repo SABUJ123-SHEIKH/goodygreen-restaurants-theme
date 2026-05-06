@@ -230,14 +230,91 @@ function goody_get_menu_item_display_name($menu_item_id) {
 }
 
 function goody_get_reservation_step_titles() {
+    $defaults = goody_get_reservation_step_defaults();
+
     return [
-        1 => goody_get_option('reservation_step_title_1', __('Date', 'goody')),
-        2 => goody_get_option('reservation_step_title_2', __('Menu', 'goody')),
-        3 => goody_get_option('reservation_step_title_3', __('Time', 'goody')),
-        4 => goody_get_option('reservation_step_title_4', __('Order Type', 'goody')),
-        5 => goody_get_option('reservation_step_title_5', __('Information', 'goody')),
-        6 => goody_get_option('reservation_step_title_6', __('Summary', 'goody')),
+        1 => goody_get_reservation_localized_option('reservation_step_title_1', $defaults['step_title_1']),
+        2 => goody_get_reservation_localized_option('reservation_step_title_2', $defaults['step_title_2']),
+        3 => goody_get_reservation_localized_option('reservation_step_title_3', $defaults['step_title_3']),
+        4 => goody_get_reservation_localized_option('reservation_step_title_4', $defaults['step_title_4']),
+        5 => goody_get_reservation_localized_option('reservation_step_title_5', $defaults['step_title_5']),
+        6 => goody_get_reservation_localized_option('reservation_step_title_6', $defaults['step_title_6']),
     ];
+}
+
+function goody_get_reservation_step_counter_prefix() {
+    $defaults = goody_get_reservation_step_defaults();
+    return goody_get_reservation_localized_option('reservation_step_counter_prefix', $defaults['step_counter_prefix']);
+}
+
+function goody_get_reservation_step_defaults() {
+    $locale = strtolower((string) (function_exists('determine_locale') ? determine_locale() : get_locale()));
+    $language = explode('_', str_replace('-', '_', $locale))[0] ?? 'en';
+
+    $defaults_by_language = [
+        'en' => [
+            'step_counter_prefix' => 'Step',
+            'step_title_1' => 'Date',
+            'step_title_2' => 'Menu',
+            'step_title_3' => 'Time',
+            'step_title_4' => 'Order Type',
+            'step_title_5' => 'Information',
+            'step_title_6' => 'Summary',
+        ],
+        'es' => [
+            'step_counter_prefix' => 'Paso',
+            'step_title_1' => 'Fecha',
+            'step_title_2' => 'Menu',
+            'step_title_3' => 'Hora',
+            'step_title_4' => 'Tipo de pedido',
+            'step_title_5' => 'Informacion',
+            'step_title_6' => 'Resumen',
+        ],
+        'ca' => [
+            'step_counter_prefix' => 'Pas',
+            'step_title_1' => 'Data',
+            'step_title_2' => 'Menu',
+            'step_title_3' => 'Hora',
+            'step_title_4' => 'Tipus de comanda',
+            'step_title_5' => 'Informacio',
+            'step_title_6' => 'Resum',
+        ],
+    ];
+
+    return $defaults_by_language[$language] ?? $defaults_by_language['en'];
+}
+
+function goody_get_reservation_legacy_step_defaults() {
+    return [
+        'reservation_step_counter_prefix' => ['ধাপ', 'Step'],
+        'reservation_step_title_1' => ['তারিখ', 'Date'],
+        'reservation_step_title_2' => ['মেনু', 'Menu'],
+        'reservation_step_title_3' => ['সময়', 'Time'],
+        'reservation_step_title_4' => ['অর্ডার ধরন', 'Order Type'],
+        'reservation_step_title_5' => ['তথ্য', 'Information'],
+        'reservation_step_title_6' => ['সারাংশ', 'Summary'],
+    ];
+}
+
+function goody_get_reservation_localized_option($option_key, $localized_default) {
+    $raw_options = (array) get_option('goody_theme_options', []);
+
+    // Respect explicit admin overrides. Use localized fallback only for empty/legacy defaults.
+    if (array_key_exists($option_key, $raw_options)) {
+        $value = sanitize_text_field((string) $raw_options[$option_key]);
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    $legacy_defaults = goody_get_reservation_legacy_step_defaults();
+    $fallback_value = sanitize_text_field((string) goody_get_option($option_key, $localized_default));
+
+    if (isset($legacy_defaults[$option_key]) && in_array($fallback_value, $legacy_defaults[$option_key], true)) {
+        return $localized_default;
+    }
+
+    return $fallback_value !== '' ? $fallback_value : $localized_default;
 }
 
 function goody_get_reservation_customer_field_settings() {
@@ -2125,7 +2202,7 @@ function goody_build_reservation_frontend_config() {
             'dineInNote' => goody_get_option('reservation_dine_in_note', __('Dine-in reservations are held for a limited time after the selected slot starts.', 'goody')),
             'bookingNotice' => goody_get_option('reservation_booking_notice', __('Choose your preferred date, dishes, slot, and payment plan below.', 'goody')),
             'errorMessage' => goody_get_option('reservation_error_message', __('Please review the form and try again.', 'goody')),
-            'stepCounterPrefix' => goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')),
+            'stepCounterPrefix' => goody_get_reservation_step_counter_prefix(),
             'summaryPlaceholder' => __('Your selected date, menu, slot, and totals will update here.', 'goody'),
             'selectItem' => __('Add to order', 'goody'),
             'updateItem' => __('Update selection', 'goody'),
@@ -2321,7 +2398,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
 
             <div class="goody-reservation-progress">
                 <div class="goody-reservation-progress__meta">
-                    <strong class="goody-step-counter" data-step-counter><?php echo esc_html(goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')) . ' 1/6'); ?></strong>
+                    <strong class="goody-step-counter" data-step-counter><?php echo esc_html(goody_get_reservation_step_counter_prefix() . ' 1/6'); ?></strong>
                     <span class="goody-step-title-current" data-current-step-title><?php echo esc_html($step_titles[1] ?? __('Date', 'goody')); ?></span>
                 </div>
                 <div class="goody-reservation-progress__track" aria-hidden="true">
@@ -2340,7 +2417,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
             <div class="goody-reservation-layout">
                 <div class="goody-reservation-panels">
                     <section class="goody-reservation-panel is-active" data-step-panel="1">
-                        <h3><?php echo esc_html(sprintf('%s 1: %s', goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')), $step_titles[1] ?? __('Date', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s 1: %s', goody_get_reservation_step_counter_prefix(), $step_titles[1] ?? __('Date', 'goody'))); ?></h3>
                         <div class="goody-date-grid">
                             <?php foreach ($calendar_days as $day) : ?>
                                 <button type="button" class="goody-date-card<?php echo $day['disabled'] ? ' is-disabled' : ''; ?>" data-booking-day="<?php echo esc_attr((string) $day['id']); ?>" <?php echo $day['disabled'] ? 'disabled' : ''; ?>>
@@ -2364,7 +2441,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="2">
-                        <h3><?php echo esc_html(sprintf('%s 2: %s', goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')), $step_titles[2] ?? __('Menu', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s 2: %s', goody_get_reservation_step_counter_prefix(), $step_titles[2] ?? __('Menu', 'goody'))); ?></h3>
                         <?php echo $menu_markup; ?>
                         <div class="goody-panel-actions">
                             <button type="button" class="button button--ghost goody-step-prev" data-prev-step="1"><?php echo esc_html($back_text); ?></button>
@@ -2373,7 +2450,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="3">
-                        <h3><?php echo esc_html(sprintf('%s 3: %s', goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')), $step_titles[3] ?? __('Time', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s 3: %s', goody_get_reservation_step_counter_prefix(), $step_titles[3] ?? __('Time', 'goody'))); ?></h3>
                         <div data-slot-results class="goody-slot-results">
                             <div class="goody-inline-empty"><?php esc_html_e('Select a date and menu items first to see the live time slots.', 'goody'); ?></div>
                         </div>
@@ -2384,7 +2461,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="4">
-                        <h3><?php echo esc_html(sprintf('%s 4: %s', goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')), $step_titles[4] ?? __('Order Type', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s 4: %s', goody_get_reservation_step_counter_prefix(), $step_titles[4] ?? __('Order Type', 'goody'))); ?></h3>
                         <div class="goody-choice-grid">
                             <?php foreach ($order_types as $type_key => $type_label) : ?>
                                 <button type="button" class="goody-choice-card" data-order-type="<?php echo esc_attr($type_key); ?>"><?php echo esc_html($type_label); ?></button>
@@ -2431,7 +2508,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="5">
-                        <h3><?php echo esc_html(sprintf('%s 5: %s', goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')), $step_titles[5] ?? __('Information', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s 5: %s', goody_get_reservation_step_counter_prefix(), $step_titles[5] ?? __('Information', 'goody'))); ?></h3>
                         <div class="goody-form-grid">
                             <label>
                                 <span><?php esc_html_e('Name', 'goody'); ?><?php echo ($field_settings['name']['required'] ?? false) ? ' *' : ''; ?></span>
@@ -2463,7 +2540,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="6">
-                        <h3><?php echo esc_html(sprintf('%s 6: %s', goody_get_option('reservation_step_counter_prefix', __('Step', 'goody')), $step_titles[6] ?? __('Summary', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s 6: %s', goody_get_reservation_step_counter_prefix(), $step_titles[6] ?? __('Summary', 'goody'))); ?></h3>
                         <div data-final-summary></div>
                         <div class="goody-panel-actions">
                             <button type="button" class="button button--ghost goody-step-prev" data-prev-step="5"><?php echo esc_html($back_text); ?></button>
