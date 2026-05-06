@@ -838,6 +838,114 @@ function goody_handle_theme_options_save() {
 }
 add_action('admin_post_goody_save_theme_options', 'goody_handle_theme_options_save');
 
+function goody_register_theme_settings_snapshot_post_type() {
+    register_post_type('goody_theme_snapshot', [
+        'labels' => [
+            'name' => __('Theme Settings Snapshots', 'goody'),
+            'singular_name' => __('Theme Settings Snapshot', 'goody'),
+        ],
+        'public' => false,
+        'show_ui' => false,
+        'show_in_menu' => false,
+        'supports' => ['title', 'editor', 'revisions'],
+        'can_export' => true,
+    ]);
+}
+add_action('init', 'goody_register_theme_settings_snapshot_post_type', 5);
+
+function goody_get_theme_settings_snapshot_post() {
+    $snapshot = get_page_by_path('goody-theme-settings-snapshot', OBJECT, 'goody_theme_snapshot');
+    if ($snapshot instanceof WP_Post) {
+        return $snapshot;
+    }
+
+    $snapshots = get_posts([
+        'post_type' => 'goody_theme_snapshot',
+        'post_status' => ['private', 'publish', 'draft'],
+        'posts_per_page' => 1,
+        'orderby' => 'date',
+        'order' => 'DESC',
+    ]);
+
+    return $snapshots[0] ?? null;
+}
+
+function goody_sync_theme_settings_snapshot($old_value, $new_value) {
+    if (! is_array($new_value)) {
+        return;
+    }
+
+    $payload = wp_json_encode($new_value);
+    if (! is_string($payload) || $payload === '') {
+        return;
+    }
+
+    $snapshot = goody_get_theme_settings_snapshot_post();
+
+    $postarr = [
+        'post_type' => 'goody_theme_snapshot',
+        'post_status' => 'private',
+        'post_title' => 'Goody Theme Settings Snapshot',
+        'post_name' => 'goody-theme-settings-snapshot',
+        'post_content' => 'Snapshot container for goody_theme_options export/import.',
+    ];
+
+    if ($snapshot instanceof WP_Post) {
+        $postarr['ID'] = $snapshot->ID;
+        $snapshot_id = wp_update_post($postarr);
+        if (! is_wp_error($snapshot_id) && $snapshot_id) {
+            update_post_meta((int) $snapshot_id, '_goody_theme_snapshot_json', wp_slash($payload));
+        }
+        return;
+    }
+
+    $snapshot_id = wp_insert_post($postarr);
+    if (! is_wp_error($snapshot_id) && $snapshot_id) {
+        update_post_meta((int) $snapshot_id, '_goody_theme_snapshot_json', wp_slash($payload));
+    }
+}
+add_action('update_option_goody_theme_options', 'goody_sync_theme_settings_snapshot', 20, 2);
+
+function goody_restore_theme_settings_from_snapshot_if_missing() {
+    $stored = get_option('goody_theme_options', null);
+    if (is_array($stored) && ! empty($stored)) {
+        return;
+    }
+
+    $snapshot = goody_get_theme_settings_snapshot_post();
+    if (! ($snapshot instanceof WP_Post)) {
+        return;
+    }
+
+    $stored_payload = (string) get_post_meta($snapshot->ID, '_goody_theme_snapshot_json', true);
+    if ($stored_payload === '') {
+        $stored_payload = (string) $snapshot->post_content;
+    }
+
+    $restored = json_decode($stored_payload, true);
+    if (! is_array($restored) || empty($restored)) {
+        return;
+    }
+
+    update_option('goody_theme_options', $restored, false);
+}
+add_action('init', 'goody_restore_theme_settings_from_snapshot_if_missing', 40);
+
+function goody_maybe_seed_theme_settings_snapshot() {
+    $options = get_option('goody_theme_options', []);
+    if (! is_array($options) || empty($options)) {
+        return;
+    }
+
+    $snapshot = get_page_by_path('goody-theme-settings-snapshot', OBJECT, 'goody_theme_snapshot');
+    if ($snapshot instanceof WP_Post) {
+        return;
+    }
+
+    goody_sync_theme_settings_snapshot([], $options);
+}
+add_action('admin_init', 'goody_maybe_seed_theme_settings_snapshot', 20);
+
 function goody_sanitize_repeater_value($json, $columns) {
     $rows = json_decode((string) $json, true);
     if (! is_array($rows)) {
