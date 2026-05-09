@@ -52,7 +52,13 @@ if (! in_array($reviews_layout, ['grid', 'carousel'], true)) {
     $reviews_layout = 'grid';
 }
 ?>
-<section id="reviews" class="page-section testimonials-zone">
+<section
+    id="reviews"
+    class="page-section testimonials-zone"
+    data-google-reviews-fallback="<?php echo $has_reviews_content ? '0' : '1'; ?>"
+    data-google-reviews-provider="<?php echo esc_attr($reviews_provider); ?>"
+    data-google-place-id="<?php echo esc_attr($google_reviews_source); ?>"
+    data-google-reviews-count="<?php echo esc_attr((string) max(1, (int) goody_get_option('google_reviews_count', '6'))); ?>">
     <div class="container" data-review-open-default="<?php echo $should_open_review_form ? '1' : '0'; ?>">
         <div class="reviews-head">
             <header class="section-heading">
@@ -160,7 +166,7 @@ if (! in_array($reviews_layout, ['grid', 'carousel'], true)) {
                 </div>
             <?php endif; ?>
         <?php else : ?>
-            <div class="card empty-state">
+            <div class="card empty-state" data-google-reviews-empty-state>
                 <h3><?php esc_html_e('No reviews available yet', 'goody'); ?></h3>
                 <?php if ($reviews_provider === 'trustpilot' && $trustpilot_api_url === '') : ?>
                     <p><?php esc_html_e('Add Trustpilot Reviews API URL in Reviews tab.', 'goody'); ?></p>

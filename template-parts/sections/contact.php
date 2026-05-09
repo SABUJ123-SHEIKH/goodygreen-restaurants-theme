@@ -8,6 +8,13 @@ $map_script_trimmed = trim($map_script_embed);
 $has_google_script_url = (bool) preg_match('#^https?://maps\\.googleapis\\.com/maps/api/js#i', $map_script_trimmed);
 $has_custom_map_script = $map_script_trimmed !== '' && ! $has_google_script_url;
 $show_native_map = goody_get_option('google_maps_embed') === '' && ($maps_api_key !== '' || $has_google_script_url);
+$map_lat = trim((string) goody_get_option('contact_map_lat', ''));
+$map_lng = trim((string) goody_get_option('contact_map_lng', ''));
+$has_map_coordinates = is_numeric($map_lat) && is_numeric($map_lng);
+$map_address = trim((string) goody_get_option('contact_address', ''));
+if ($has_map_coordinates) {
+    $map_address = (string) $map_lat . ',' . (string) $map_lng;
+}
 ?>
 <section id="contact" class="page-section page-section--soft">
     <div class="container">
@@ -26,7 +33,7 @@ $show_native_map = goody_get_option('google_maps_embed') === '' && ($maps_api_ke
                         <div
                             class="goody-map-canvas"
                             data-goody-map
-                            data-address="<?php echo esc_attr(goody_get_option('contact_address', '')); ?>"
+                            data-address="<?php echo esc_attr($map_address); ?>"
                             data-title="<?php echo esc_attr(goody_get_option('restaurant_name', get_bloginfo('name'))); ?>">
                         </div>
                     <?php elseif ($has_custom_map_script) : ?>

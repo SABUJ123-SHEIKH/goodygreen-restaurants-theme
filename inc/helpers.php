@@ -11,6 +11,8 @@ function goody_default_options() {
         'header_search_placeholder' => 'Search menu, offers, events...',
         'header_enable_dropdown_menu' => '1',
         'header_enable_mega_menu' => '1',
+        'header_enable_mobile_bottom_nav' => '1',
+        'header_enable_bottom_cta_bar' => '0',
         'hero_background_type' => 'image',
         'hero_image' => 0,
         'hero_video_file' => 0,
@@ -193,6 +195,8 @@ function goody_default_options() {
         'contact_phone' => '',
         'contact_email' => '',
         'contact_address' => '',
+        'contact_map_lat' => '',
+        'contact_map_lng' => '',
         'contact_whatsapp_number' => '',
         'contact_whatsapp_button_text' => 'WhatsApp Us',
         'contact_call_button_text' => 'Call Now',
@@ -4736,16 +4740,41 @@ function goody_get_hero_video_embed_url($url) {
 
     if (strpos($host, 'youtube.com') !== false || strpos($host, 'youtu.be') !== false) {
         $video_id = '';
+        $path = trim((string) wp_parse_url($url, PHP_URL_PATH), '/');
+
         if (strpos($host, 'youtu.be') !== false) {
-            $path = trim((string) wp_parse_url($url, PHP_URL_PATH), '/');
-            $video_id = sanitize_text_field($path);
+            $parts = $path !== '' ? explode('/', $path) : [];
+            $video_id = sanitize_text_field((string) ($parts[0] ?? ''));
         } else {
             parse_str((string) wp_parse_url($url, PHP_URL_QUERY), $query);
-            $video_id = sanitize_text_field($query['v'] ?? '');
+            $video_id = sanitize_text_field((string) ($query['v'] ?? ''));
+
+            if ($video_id === '' && $path !== '') {
+                $parts = explode('/', $path);
+                $patterns = [
+                    'embed' => 1,
+                    'shorts' => 1,
+                    'live' => 1,
+                    'v' => 1,
+                ];
+
+                foreach ($parts as $index => $part) {
+                    $part = strtolower(trim((string) $part));
+                    if ($part === '' || ! isset($patterns[$part])) {
+                        continue;
+                    }
+
+                    $video_id = sanitize_text_field((string) ($parts[$index + 1] ?? ''));
+                    if ($video_id !== '') {
+                        break;
+                    }
+                }
+            }
         }
 
-        if ($video_id) {
-            return 'https://www.youtube.com/embed/' . rawurlencode($video_id) . '?autoplay=1&mute=1&loop=1&controls=0&showinfo=0&rel=0&playlist=' . rawurlencode($video_id);
+        $video_id = trim((string) preg_replace('/[^A-Za-z0-9_-]/', '', (string) $video_id));
+        if ($video_id !== '' && preg_match('/^[A-Za-z0-9_-]{6,20}$/', $video_id)) {
+            return 'https://www.youtube-nocookie.com/embed/' . rawurlencode($video_id) . '?autoplay=1&mute=1&loop=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&playlist=' . rawurlencode($video_id);
         }
     }
 
@@ -6113,6 +6142,12 @@ function goody_get_google_reviews_data($force_refresh = false) {
     $provider_key_hint = goody_get_effective_reviews_api_key('auto');
     $selected_provider = goody_get_reviews_provider($provider_key_hint, $place_input);
 
+    $has_google_place_context = goody_extract_google_place_id($place_input) !== '' || goody_extract_google_cid($place_input) !== '';
+    $google_key_hint = goody_get_effective_reviews_api_key('google');
+    if ($has_google_place_context && $google_key_hint !== '') {
+        $selected_provider = 'google';
+    }
+
     $trustpilot_url = goody_normalize_url_input(goody_get_option('trustpilot_api_url', ''));
     $custom_url = goody_normalize_url_input(goody_get_option('custom_reviews_api_url', ''));
     $google_key = goody_get_effective_reviews_api_key('google');
@@ -6137,6 +6172,10 @@ function goody_get_google_reviews_data($force_refresh = false) {
     })));
 
     $allow_live_fetch = $force_refresh || goody_should_allow_live_remote_fetch();
+    if (! $allow_live_fetch && ! is_admin()) {
+        // Allow cache-backed live reviews on frontend so public pages can show fresh data.
+        $allow_live_fetch = true;
+    }
     if (! $allow_live_fetch && function_exists('wp_schedule_single_event')) {
         $next_sync = wp_next_scheduled('goody_google_reviews_sync_event');
         if (! $next_sync || ($next_sync - time()) > 300) {

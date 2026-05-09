@@ -54,12 +54,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const images = document.querySelectorAll('img');
     if (!images.length) return;
 
-    const viewportHeight = window.innerHeight || 900;
+    let eagerBudget = 6;
     images.forEach(function (img) {
       if (!img) return;
       if (!img.hasAttribute('loading')) {
-        const rect = img.getBoundingClientRect();
-        img.loading = rect.top > viewportHeight * 1.2 ? 'lazy' : 'eager';
+        // Keep only the earliest viewport-priority images eager to avoid expensive layout reads.
+        img.loading = eagerBudget > 0 ? 'eager' : 'lazy';
+        if (eagerBudget > 0) {
+          eagerBudget -= 1;
+        }
       }
       if (!img.hasAttribute('decoding')) {
         img.decoding = 'async';
@@ -125,6 +128,17 @@ document.addEventListener('DOMContentLoaded', function () {
     return '';
   }
 
+  function resolveGoogleClientApiKey() {
+    const fromMaps = normalizeGoogleMapsKey(window.goodyTheme && goodyTheme.mapsApiKey ? goodyTheme.mapsApiKey : '');
+    if (fromMaps) return fromMaps;
+    return normalizeGoogleMapsKey(window.goodyTheme && goodyTheme.googleReviewsApiKey ? goodyTheme.googleReviewsApiKey : '');
+  }
+
+  function isLocalDevHost() {
+    const host = String(window.location.hostname || '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+  }
+
   function renderMapFallback() {
     const mapTarget = document.querySelector('[data-goody-map]');
     if (!mapTarget) return;
@@ -151,9 +165,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function loadGoogleMapsScriptIfNeeded() {
     const mapTarget = document.querySelector('[data-goody-map]');
-    const apiKey = normalizeGoogleMapsKey(window.goodyTheme && goodyTheme.mapsApiKey ? goodyTheme.mapsApiKey : '');
+    const apiKey = resolveGoogleClientApiKey();
 
     if (!mapTarget || !apiKey) return;
+    if (isLocalDevHost()) {
+      renderMapFallback();
+      return;
+    }
     if (window.google && window.google.maps) return;
 
     const existing = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
@@ -163,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function () {
     script.src =
       'https://maps.googleapis.com/maps/api/js?key=' +
       encodeURIComponent(apiKey) +
-      '&libraries=places&callback=initMap&loading=async';
+      '&callback=initMap&loading=async';
     script.onerror = function () {
       renderMapFallback();
     };
@@ -775,11 +793,27 @@ document.addEventListener('DOMContentLoaded', function () {
     const initMobileDropdownToggles = function () {
       const mobileQuery = window.matchMedia('(max-width: 980px)');
       const parentItems = nav.querySelectorAll('.menu-item-has-children, .page_item_has_children');
+      const getDirectChildBySelector = function (parent, selector) {
+        if (!parent) return null;
+        try {
+          return parent.querySelector(':scope > ' + selector);
+        } catch (error) {
+          const children = Array.prototype.slice.call(parent.children || []);
+          for (let i = 0; i < children.length; i += 1) {
+            const child = children[i];
+            if (child && typeof child.matches === 'function' && child.matches(selector)) {
+              return child;
+            }
+          }
+        }
+        return null;
+      };
 
       parentItems.forEach(function (item) {
-        const directLink = item.querySelector(':scope > a');
-        const subMenu = item.querySelector(':scope > .sub-menu');
-        if (!directLink || !subMenu || item.querySelector(':scope > .goody-submenu-toggle')) {
+        const directLink = getDirectChildBySelector(item, 'a');
+        const subMenu = getDirectChildBySelector(item, '.sub-menu');
+        const existingToggle = getDirectChildBySelector(item, '.goody-submenu-toggle');
+        if (!directLink || !subMenu || existingToggle) {
           return;
         }
 
@@ -788,6 +822,7 @@ document.addEventListener('DOMContentLoaded', function () {
         toggleButton.className = 'goody-submenu-toggle';
         toggleButton.setAttribute('aria-label', 'Toggle submenu');
         toggleButton.setAttribute('aria-expanded', 'false');
+        toggleButton.innerHTML = '<span class="goody-submenu-toggle__icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 9l6 6 6-6"/></svg></span>';
         if (!subMenu.id) {
           subMenu.id = 'goody-submenu-' + Math.random().toString(36).slice(2, 10);
         }
@@ -808,6 +843,32 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         setExpanded(false);
+      });
+
+      nav.addEventListener('click', function (event) {
+        if (!mobileQuery.matches) return;
+
+        const clickedLink = event.target && event.target.closest ? event.target.closest('a') : null;
+        if (!clickedLink) return;
+
+        const parentItem = clickedLink.closest('.menu-item-has-children, .page_item_has_children');
+        if (!parentItem || !nav.contains(parentItem)) return;
+        const linkContainer = clickedLink.closest('li');
+        if (linkContainer && linkContainer !== parentItem) return;
+
+        const directLink = getDirectChildBySelector(parentItem, 'a');
+        const subMenu = getDirectChildBySelector(parentItem, '.sub-menu');
+        if (!directLink || !subMenu) return;
+        if (clickedLink !== directLink) return;
+
+        event.preventDefault();
+        const expanded = parentItem.classList.contains('is-submenu-open');
+        parentItem.classList.toggle('is-submenu-open', !expanded);
+
+        const toggleButton = getDirectChildBySelector(parentItem, '.goody-submenu-toggle');
+        if (toggleButton) {
+          toggleButton.setAttribute('aria-expanded', !expanded ? 'true' : 'false');
+        }
       });
     };
 
@@ -1121,6 +1182,160 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
   }
+
+  function bootstrapGoogleReviewsFallback() {
+    if (isLocalDevHost()) return;
+
+    const reviewsSection = document.querySelector('#reviews[data-google-reviews-fallback="1"]');
+    if (!reviewsSection) return;
+
+    const provider = String(reviewsSection.getAttribute('data-google-reviews-provider') || '').trim().toLowerCase();
+    if (provider !== 'google' && provider !== 'auto') return;
+
+    const placeInput = String(reviewsSection.getAttribute('data-google-place-id') || '').trim();
+    if (!placeInput) return;
+
+    const apiKey = resolveGoogleClientApiKey();
+    if (!apiKey) return;
+
+    const placeMatch = placeInput.match(/\b(ChI[0-9A-Za-z_-]{10,})\b/);
+    const placeId = placeMatch && placeMatch[1] ? placeMatch[1] : '';
+    if (!placeId) return;
+
+    const reviewCount = Math.min(10, Math.max(1, parseInt(reviewsSection.getAttribute('data-google-reviews-count') || '6', 10) || 6));
+
+    const renderReviews = function (reviews) {
+      if (!Array.isArray(reviews) || !reviews.length) return;
+      if (document.querySelector('#reviews [data-review-card]')) return;
+
+      const emptyState = document.querySelector('#reviews [data-google-reviews-empty-state]');
+      if (emptyState) {
+        emptyState.remove();
+      }
+
+      const grid = document.createElement('div');
+      grid.className = 'archive-grid archive-grid--three review-grid';
+
+      reviews.slice(0, reviewCount).forEach(function (review) {
+        const rating = Math.max(1, Math.min(5, parseInt(review.rating || 0, 10) || 5));
+        const authorName = String(review.author_name || '').trim() || 'Google User';
+        const reviewText = String(review.text || '').trim();
+        const timeText = String(review.relative_time_description || '').trim() || 'Google review';
+        const profilePhoto = String(review.profile_photo_url || '').trim();
+
+        const card = document.createElement('article');
+        card.className = 'card testimonial-card testimonial-card--google';
+        card.setAttribute('data-review-card', '');
+        card.setAttribute('data-review-rating', String(rating));
+
+        const stars = document.createElement('div');
+        stars.className = 'rating';
+        for (let i = 0; i < rating; i += 1) {
+          const star = document.createElement('span');
+          star.className = 'icon-star';
+          star.textContent = '★';
+          stars.appendChild(star);
+        }
+
+        const content = document.createElement('div');
+        content.className = 'testimonial-card__content';
+        content.textContent = reviewText || 'Great experience.';
+
+        const author = document.createElement('div');
+        author.className = 'testimonial-card__author';
+
+        if (profilePhoto) {
+          const avatar = document.createElement('div');
+          avatar.className = 'testimonial-avatar';
+          const img = document.createElement('img');
+          img.src = profilePhoto;
+          img.alt = authorName;
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          avatar.appendChild(img);
+          author.appendChild(avatar);
+        } else {
+          const avatarFallback = document.createElement('div');
+          avatarFallback.className = 'testimonial-avatar testimonial-avatar--fallback';
+          const letter = document.createElement('span');
+          letter.textContent = authorName.charAt(0).toUpperCase() || 'G';
+          avatarFallback.appendChild(letter);
+          author.appendChild(avatarFallback);
+        }
+
+        const authorMeta = document.createElement('div');
+        const authorStrong = document.createElement('strong');
+        authorStrong.textContent = authorName;
+        const authorTime = document.createElement('span');
+        authorTime.textContent = timeText;
+        authorMeta.appendChild(authorStrong);
+        authorMeta.appendChild(authorTime);
+        author.appendChild(authorMeta);
+
+        card.appendChild(stars);
+        card.appendChild(content);
+        card.appendChild(author);
+        grid.appendChild(card);
+      });
+
+      const cta = document.querySelector('#reviews .review-cta');
+      if (cta && cta.parentNode) {
+        cta.parentNode.insertBefore(grid, cta);
+      }
+    };
+
+    const fetchReviews = function () {
+      if (!window.google || !google.maps || !google.maps.places) return;
+      const host = document.createElement('div');
+      const service = new google.maps.places.PlacesService(host);
+      service.getDetails(
+        {
+          placeId: placeId,
+          fields: ['reviews']
+        },
+        function (place, status) {
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !place) return;
+          renderReviews(place.reviews || []);
+        }
+      );
+    };
+
+    const loadScript = function () {
+      if (window.google && google.maps && google.maps.places) {
+        fetchReviews();
+        return;
+      }
+
+      const existing = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+      if (existing) {
+        existing.addEventListener('load', fetchReviews, { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(apiKey) + '&libraries=places&loading=async';
+      script.async = true;
+      script.defer = true;
+      script.addEventListener('load', fetchReviews, { once: true });
+      document.head.appendChild(script);
+    };
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          observer.disconnect();
+          loadScript();
+        });
+      }, { rootMargin: '260px 0px' });
+      observer.observe(reviewsSection);
+      return;
+    }
+
+    loadScript();
+  }
+
+  bootstrapGoogleReviewsFallback();
 
   const reviewModal = document.querySelector('[data-review-modal]');
   if (reviewModal) {

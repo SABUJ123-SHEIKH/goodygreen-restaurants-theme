@@ -56,6 +56,9 @@ function goody_enqueue_assets() {
     if ($maps_api_key === '') {
         $maps_api_key = goody_extract_google_maps_api_key(goody_get_option('map_script_embed', ''));
     }
+    $google_reviews_api_key = function_exists('goody_get_effective_reviews_api_key')
+        ? goody_get_effective_reviews_api_key('google')
+        : '';
 
     $goody_polyfill_script = <<<'JS'
 (function () {
@@ -111,6 +114,7 @@ JS;
         'nonce' => wp_create_nonce('goody_nonce'),
         'isFrontPage' => is_front_page(),
         'mapsApiKey' => $maps_api_key,
+        'googleReviewsApiKey' => $google_reviews_api_key,
     ]);
     wp_script_add_data('goody-main', 'defer', true);
 

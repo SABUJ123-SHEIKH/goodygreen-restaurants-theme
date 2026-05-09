@@ -6,6 +6,13 @@ $background_type = goody_get_option('hero_background_type', 'image');
 $video_file = wp_get_attachment_url(absint(goody_get_option('hero_video_file')));
 $video_external = goody_get_hero_video_embed_url(goody_get_option('hero_video_url'));
 $show_video = $background_type === 'video' && ($video_file || $video_external);
+$hero_classes = ['hero'];
+if ($show_video || $hero_image_id > 0) {
+    $hero_classes[] = 'hero--has-media';
+}
+if ($show_video) {
+    $hero_classes[] = 'hero--has-video';
+}
 $hero_style = '';
 if ($hero_image) {
     $hero_style = 'style="--hero-bg-image:url(' . esc_url($hero_image) . ');';
@@ -187,7 +194,7 @@ if (! empty($delivery_labels)) {
     ];
 }
 ?>
-<section class="hero" <?php echo $hero_style; ?>>
+<section class="<?php echo esc_attr(implode(' ', $hero_classes)); ?>" <?php echo $hero_style; ?>>
     <?php if ($hero_image_id > 0 && ! $show_video) : ?>
         <div class="hero__bg-wrap" aria-hidden="true">
             <picture>
@@ -218,7 +225,38 @@ if (! empty($delivery_labels)) {
                     <source src="<?php echo esc_url($video_file); ?>" type="video/mp4">
                 </video>
             <?php elseif ($video_external) : ?>
-                <iframe class="hero__iframe" src="<?php echo esc_url($video_external); ?>" allow="autoplay; fullscreen" loading="lazy" title="<?php esc_attr_e('Hero video', 'goody'); ?>"></iframe>
+                <iframe class="hero__iframe" src="about:blank" data-goody-deferred-src="<?php echo esc_url($video_external); ?>" allow="autoplay; fullscreen; picture-in-picture" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" title="<?php esc_attr_e('Hero video', 'goody'); ?>"></iframe>
+                <script>
+                    (function () {
+                        var boot = function () {
+                            var iframe = document.querySelector('.hero__iframe[data-goody-deferred-src]');
+                            if (!iframe || iframe.getAttribute('src') !== 'about:blank') {
+                                return;
+                            }
+
+                            var setSource = function () {
+                                var deferredSrc = iframe.getAttribute('data-goody-deferred-src');
+                                if (!deferredSrc || iframe.getAttribute('src') !== 'about:blank') {
+                                    return;
+                                }
+                                iframe.setAttribute('src', deferredSrc);
+                            };
+
+                            if (window.requestIdleCallback) {
+                                window.requestIdleCallback(setSource, { timeout: 1600 });
+                                return;
+                            }
+
+                            window.setTimeout(setSource, 650);
+                        };
+
+                        if (document.readyState === 'loading') {
+                            document.addEventListener('DOMContentLoaded', boot, { once: true });
+                        } else {
+                            boot();
+                        }
+                    }());
+                </script>
             <?php endif; ?>
         </div>
     <?php endif; ?>

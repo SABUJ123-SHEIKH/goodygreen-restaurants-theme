@@ -115,6 +115,8 @@ function goody_get_settings_fields() {
             ['key' => 'header_sticky', 'label' => __('Enable Sticky Header', 'goody'), 'type' => 'checkbox'],
             ['key' => 'header_show_search', 'label' => __('Show Header Search', 'goody'), 'type' => 'checkbox'],
             ['key' => 'header_search_placeholder', 'label' => __('Search Placeholder', 'goody'), 'type' => 'text'],
+            ['key' => 'header_enable_mobile_bottom_nav', 'label' => __('Enable Mobile Bottom Navigation', 'goody'), 'type' => 'checkbox'],
+            ['key' => 'header_enable_bottom_cta_bar', 'label' => __('Enable Bottom CTA Bar', 'goody'), 'type' => 'checkbox'],
             ['key' => 'header_enable_dropdown_menu', 'label' => __('Enable Dropdown Menu', 'goody'), 'type' => 'checkbox'],
             [
                 'key' => 'header_enable_mega_menu',
@@ -134,9 +136,27 @@ function goody_get_settings_fields() {
                     'video' => __('Video', 'goody'),
                 ],
             ],
-            ['key' => 'hero_image', 'label' => __('Hero Image', 'goody'), 'type' => 'media'],
-            ['key' => 'hero_video_file', 'label' => __('Hero Video File (Upload)', 'goody'), 'type' => 'media'],
-            ['key' => 'hero_video_url', 'label' => __('Hero Video External URL', 'goody'), 'type' => 'url'],
+            [
+                'key' => 'hero_image',
+                'label' => __('Hero Image', 'goody'),
+                'type' => 'media',
+                'depends_on' => 'hero_background_type',
+                'depends_value' => 'image',
+            ],
+            [
+                'key' => 'hero_video_file',
+                'label' => __('Hero Video File (Upload)', 'goody'),
+                'type' => 'media',
+                'depends_on' => 'hero_background_type',
+                'depends_value' => 'video',
+            ],
+            [
+                'key' => 'hero_video_url',
+                'label' => __('Hero Video External URL', 'goody'),
+                'type' => 'url',
+                'depends_on' => 'hero_background_type',
+                'depends_value' => 'video',
+            ],
             ['key' => 'hero_overlay_strength', 'label' => __('Overlay Strength (%)', 'goody'), 'type' => 'number'],
             ['key' => 'hero_heading', 'label' => __('Hero Heading', 'goody'), 'type' => 'text'],
             ['key' => 'hero_highlight_text', 'label' => __('Hero Highlight Text', 'goody'), 'type' => 'text', 'description' => __('Optional word or phrase to render in script/accent style inside the hero heading.', 'goody')],
@@ -455,7 +475,12 @@ function goody_get_settings_fields() {
                 ],
             ],
             ['key' => 'google_reviews_mock_mode', 'label' => __('Enable Mock Reviews (Test Mode)', 'goody'), 'type' => 'checkbox'],
-            ['key' => 'google_reviews_place_id', 'label' => __('Google Place ID / CID / Maps Link / SerpApi data_id', 'goody'), 'type' => 'text'],
+            [
+                'key' => 'google_reviews_place_id',
+                'label' => __('Google Place ID', 'goody'),
+                'type' => 'text',
+                'description' => __('Paste Place ID (ChIJ...), or CID/Maps link if needed. Live Google reviews also require Google Reviews API key in Integrations.', 'goody'),
+            ],
             ['key' => 'google_reviews_count', 'label' => __('Google Reviews Count', 'goody'), 'type' => 'number'],
             [
                 'key' => 'reviews_default_rating_filter',
@@ -708,6 +733,8 @@ function goody_get_settings_fields() {
             ['key' => 'contact_phone', 'label' => __('Phone', 'goody'), 'type' => 'text'],
             ['key' => 'contact_email', 'label' => __('Email', 'goody'), 'type' => 'email'],
             ['key' => 'contact_address', 'label' => __('Address', 'goody'), 'type' => 'textarea'],
+            ['key' => 'contact_map_lat', 'label' => __('Map Latitude', 'goody'), 'type' => 'text', 'description' => __('For native map marker. Example: 41.3787', 'goody')],
+            ['key' => 'contact_map_lng', 'label' => __('Map Longitude', 'goody'), 'type' => 'text', 'description' => __('For native map marker. Example: 2.1658', 'goody')],
             ['key' => 'contact_whatsapp_number', 'label' => __('WhatsApp Number', 'goody'), 'type' => 'text'],
             ['key' => 'contact_whatsapp_button_text', 'label' => __('WhatsApp Button Text', 'goody'), 'type' => 'text'],
             ['key' => 'contact_call_button_text', 'label' => __('Call Button Text', 'goody'), 'type' => 'text'],
@@ -764,13 +791,13 @@ function goody_get_settings_fields() {
             ['key' => 'seo_local_text', 'label' => __('Local SEO Text', 'goody'), 'type' => 'textarea'],
         ],
         'integrations' => [
-            ['key' => 'integrations_maps_api_key', 'label' => __('Maps API Key or Script URL', 'goody'), 'type' => 'text'],
+            ['key' => 'integrations_maps_api_key', 'label' => __('Maps API Key or Script URL (Google Maps JavaScript API)', 'goody'), 'type' => 'text'],
             ['key' => 'integrations_reviews_api_key', 'label' => __('Reviews API Key / Token (Google or SerpApi)', 'goody'), 'type' => 'text'],
             [
                 'key' => 'integrations_google_reviews_api_key',
                 'label' => __('Google Reviews API Key (Optional)', 'goody'),
                 'type' => 'text',
-                'description' => __('Use key starting with AIza... for Google Places reviews. If empty, shared Reviews key is used.', 'goody'),
+                'description' => __('Use a server-side key starting with AIza... for Google Places reviews. Do not use an HTTP referrer restricted browser key here; restrict this key by server IP and Places API instead. If empty, shared Reviews key is used.', 'goody'),
             ],
             [
                 'key' => 'integrations_serpapi_api_key',
@@ -1307,6 +1334,7 @@ function goody_render_option_field($field, $options) {
         $image_url = $value ? wp_get_attachment_image_url((int) $value, 'medium') : '';
         echo '<input type="hidden" class="goody-media-field" id="' . esc_attr($key) . '" name="goody_theme_options[' . esc_attr($key) . ']" value="' . esc_attr((string) $value) . '">';
         echo '<button type="button" class="button goody-media-upload" data-target="' . esc_attr($key) . '">' . esc_html__('Upload / Select', 'goody') . '</button>';
+        echo ' <button type="button" class="button button-link-delete goody-media-clear" data-target="' . esc_attr($key) . '">' . esc_html__('Remove', 'goody') . '</button>';
         echo '<div class="goody-media-preview" style="margin-top:10px;">';
         if ($image_url) {
             echo '<img src="' . esc_url($image_url) . '" alt="" style="max-width:240px;height:auto;">';
@@ -1316,11 +1344,15 @@ function goody_render_option_field($field, $options) {
         $ids = array_values(array_filter(array_map('absint', explode(',', (string) $value))));
         echo '<input type="hidden" class="goody-gallery-field" id="' . esc_attr($key) . '" name="goody_theme_options[' . esc_attr($key) . ']" value="' . esc_attr((string) $value) . '">';
         echo '<button type="button" class="button goody-gallery-upload" data-target="' . esc_attr($key) . '">' . esc_html__('Upload Multiple', 'goody') . '</button>';
+        echo ' <button type="button" class="button button-link-delete goody-gallery-clear" data-target="' . esc_attr($key) . '">' . esc_html__('Clear All', 'goody') . '</button>';
         echo '<div class="goody-gallery-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">';
         foreach ($ids as $id) {
             $src = wp_get_attachment_image_url($id, 'thumbnail');
             if ($src) {
+                echo '<span class="goody-gallery-thumb" data-id="' . esc_attr((string) $id) . '" style="position:relative;display:inline-flex;">';
                 echo '<img src="' . esc_url($src) . '" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px;">';
+                echo '<button type="button" class="goody-gallery-thumb-remove" aria-label="' . esc_attr__('Remove image', 'goody') . '" title="' . esc_attr__('Remove image', 'goody') . '" style="position:absolute;top:-7px;right:-7px;border:0;border-radius:999px;width:18px;height:18px;line-height:18px;padding:0;background:#b32d2e;color:#fff;cursor:pointer;">&times;</button>';
+                echo '</span>';
             }
         }
         echo '</div>';
@@ -1608,6 +1640,7 @@ function goody_print_dynamic_css() {
         '.hero::before{background-image:linear-gradient(color-mix(in srgb,var(--color-primary) 8%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--color-primary) 8%,transparent) 1px,transparent 1px);opacity:.32;}',
         '.hero::after{background:radial-gradient(circle at 82% 56%,color-mix(in srgb,var(--color-primary-2) 24%,transparent),transparent 18%),radial-gradient(circle at 72% 9%,color-mix(in srgb,var(--color-primary) 18%,transparent),transparent 16%);}',
         '.hero__overlay{background:linear-gradient(92deg,color-mix(in srgb,var(--color-bg) 82%,var(--color-bg-deep) 18%) 0%,color-mix(in srgb,var(--color-bg) 68%,var(--color-bg-deep) 32%) 48%,color-mix(in srgb,var(--color-bg) 52%,var(--color-bg-deep) 48%) 100%);}',
+        '.hero__video-wrap{position:absolute;inset:0;overflow:hidden;z-index:0;background:var(--color-bg-deep);} .hero__video{width:100%;height:100%;object-fit:cover;object-position:center;} .hero__iframe{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-width:177.78vh;min-height:100vh;border:0;transform:translate(-50%,-50%);pointer-events:none;} .hero--has-video{background-image:none!important;} @media (max-width:980px){.hero--has-video{min-height:clamp(560px,86vh,860px);} .hero--has-video .hero__video-wrap,.hero--has-video .hero__video,.hero--has-video .hero__iframe{inset:0;} .hero--has-video .hero__video{width:100%;height:100%;object-fit:cover;object-position:center center;} .hero__iframe{width:177.78vw;height:100vw;min-width:0;min-height:100%;max-width:none;max-height:none;}}',
         '.hero__headline-line{color:color-mix(in srgb,var(--color-text) 96%,var(--color-card) 4%);} .hero__headline-line--accent{color:color-mix(in srgb,var(--color-primary) 82%,var(--color-primary-2) 18%);} .hero__eyebrow{color:color-mix(in srgb,var(--color-primary) 58%,var(--color-text) 42%);} .hero__eyebrow-line{background:color-mix(in srgb,var(--color-primary) 62%,transparent);} ',
         '.hero__content p{color:color-mix(in srgb,var(--color-text) 52%,var(--color-muted) 48%);} .hero-stat__value{color:color-mix(in srgb,var(--color-text) 90%,var(--color-card) 10%);} .hero-stat__label{color:color-mix(in srgb,var(--color-text) 62%,var(--color-muted) 38%);} .hero__content .button--ghost,.hero__content .button--outline,.hero__content .button--hero-secondary{color:var(--color-text);border-color:color-mix(in srgb,var(--color-primary) 24%,var(--color-border));background:color-mix(in srgb,var(--color-card) 82%,transparent);} .hero__content .button--ghost svg,.hero__content .button--outline svg,.hero__content .button--hero-secondary svg{fill:currentColor;color:currentColor;} .hero__content .button--ghost:hover,.hero__content .button--outline:hover,.hero__content .button--hero-secondary:hover{color:color-mix(in srgb,var(--color-text) 92%,var(--color-card) 8%);border-color:color-mix(in srgb,var(--color-primary) 40%,var(--color-border));background:color-mix(in srgb,var(--color-card) 90%,transparent);} ',
         '.hero-stat__icon{border-color:color-mix(in srgb,var(--color-primary) 32%,transparent);background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--color-primary) 24%,transparent),color-mix(in srgb,var(--color-bg-deep) 92%,transparent));color:color-mix(in srgb,var(--color-primary) 66%,var(--color-text) 34%);} .hero-stat--clock .hero-stat__icon{color:color-mix(in srgb,var(--color-text) 74%,var(--color-muted) 26%);} .hero-stat--delivery .hero-stat__icon,.hero-stat--calendar .hero-stat__icon{color:color-mix(in srgb,var(--color-primary) 72%,var(--reservation-accent-color) 28%);} ',
@@ -1638,6 +1671,7 @@ function goody_print_dynamic_css() {
         '.archive-grid.archive-grid--three.review-grid .review-card{border-color:var(--color-border)!important;background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent))!important;} .archive-grid.archive-grid--three.review-grid .review-card h3,.archive-grid.archive-grid--three.review-grid .review-card strong{color:var(--color-text)!important;} .archive-grid.archive-grid--three.review-grid .review-card p,.archive-grid.archive-grid--three.review-grid .review-card small,.archive-grid.archive-grid--three.review-grid .review-card span{color:color-mix(in srgb,var(--color-text) 74%,var(--color-muted) 26%)!important;}',
         '.page-section.news-zone,.news-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .news-zone .section-heading h2,.news-zone h3,.news-zone strong{color:var(--color-text);} .news-zone .section-heading p,.news-zone p,.news-zone li,.news-zone small,.news-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} .news-zone .card,.news-zone .news-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
         '.newsletter-zone,.newsletter-card,.page-section.newsletter-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 72%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .newsletter-card,.newsletter-zone .card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 72%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));} .newsletter-zone h2,.newsletter-zone h3,.newsletter-zone strong,.newsletter-card h2,.newsletter-card h3{color:var(--color-text);} .newsletter-zone p,.newsletter-zone small,.newsletter-zone span,.newsletter-card p{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);}',
+        '#account,.account-zone,.page-section.account-zone{background:radial-gradient(circle at 12% 10%,color-mix(in srgb,var(--color-primary) 16%,transparent),transparent 28%),radial-gradient(circle at 92% 90%,color-mix(in srgb,var(--color-primary-2) 14%,transparent),transparent 36%),linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} #account .section-heading h2,#account h3,#account strong,.account-zone .section-heading h2,.account-zone h3,.account-zone strong{color:var(--color-text);} #account .section-heading p,#account p,#account li,#account small,#account span,.account-zone p,.account-zone li,.account-zone small,.account-zone span{color:color-mix(in srgb,var(--color-text) 70%,var(--color-muted) 30%);} #account .card,#account .account-card,.account-zone .card,.account-zone .account-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 72%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
         '#events,.events-zone,.page-section.events-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} #events .section-heading h2,#events h3,#events strong,.events-zone .section-heading h2,.events-zone h3,.events-zone strong{color:var(--color-text);} #events .section-heading p,#events p,#events li,#events small,#events span,.events-zone p,.events-zone small,.events-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} #events .card,#events .event-card,.events-zone .card,.events-zone .event-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
         '#contact,.contact-zone,.page-section.contact-zone{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 74%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} #contact .section-heading h2,#contact h3,#contact strong,.contact-zone .section-heading h2,.contact-zone h3,.contact-zone strong{color:var(--color-text);} #contact .section-heading p,#contact p,#contact li,#contact small,#contact span,.contact-zone p,.contact-zone small,.contact-zone span{color:color-mix(in srgb,var(--color-text) 68%,var(--color-muted) 32%);} #contact .card,#contact .contact-card,.contact-zone .card,.contact-zone .contact-card{border-color:var(--color-border);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 70%,transparent),color-mix(in srgb,var(--color-card) 94%,transparent));}',
         '.goody-page-section--reservation{background:linear-gradient(180deg,color-mix(in srgb,var(--color-section) 72%,transparent),color-mix(in srgb,var(--color-bg) 98%,transparent));} .goody-page-section--reservation h1,.goody-page-section--reservation h2,.goody-page-section--reservation h3,.goody-page-section--reservation strong{color:color-mix(in srgb,var(--color-text) 94%,var(--color-card) 6%);} .goody-page-section--reservation p,.goody-page-section--reservation li,.goody-page-section--reservation small,.goody-page-section--reservation span,.goody-page-section--reservation label{color:color-mix(in srgb,var(--color-text) 78%,var(--color-muted) 22%);} .goody-page-section--reservation li{background:transparent;box-shadow:none;} .goody-page-section.goody-page-section--reservation p,.goody-page-section.goody-page-section--reservation li,.goody-page-section.goody-page-section--reservation small,.goody-page-section.goody-page-section--reservation label{color:color-mix(in srgb,var(--color-text) 78%,var(--color-muted) 22%)!important;} .goody-page-section--reservation .card,.goody-page-section--reservation .goody-booking-card,.goody-page-section--reservation .goody-sidebar-card,.goody-page-section--reservation .goody-status-card,.goody-page-section--reservation .goody-reservation-panel,.goody-page-section--reservation .goody-reservation-shell{border-color:color-mix(in srgb,var(--color-border) 88%,var(--color-primary) 12%);background:linear-gradient(180deg,color-mix(in srgb,var(--color-card-soft) 68%,transparent),color-mix(in srgb,var(--color-card) 96%,transparent));} .goody-page-section--reservation .goody-step-counter,.goody-page-section--reservation .goody-reservation-kicker,.goody-page-section--reservation .goody-summary-line--grand strong,.goody-page-section--reservation .goody-summary-line--pay strong{color:color-mix(in srgb,var(--reservation-accent-color) 78%,var(--color-primary) 22%);}',
@@ -1698,6 +1732,133 @@ function goody_print_custom_code_footer() {
     }
 }
 add_action('wp_footer', 'goody_print_custom_code_footer', 99);
+
+function goody_print_map_reviews_runtime_fallback() {
+    if (is_admin()) {
+        return;
+    }
+    ?>
+    <script id="goody-map-reviews-runtime-fallback">
+        (function () {
+            var isLocalDevHost = function () {
+                var host = String(window.location.hostname || '').toLowerCase();
+                return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.slice(-6) === '.local';
+            };
+
+            if (isLocalDevHost()) {
+                return;
+            }
+
+            var onReady = function (fn) {
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', fn, { once: true });
+                    return;
+                }
+                fn();
+            };
+
+            var readGoogleKey = function () {
+                var raw = '';
+                if (window.goodyTheme && typeof window.goodyTheme.mapsApiKey === 'string') {
+                    raw = window.goodyTheme.mapsApiKey;
+                }
+                if (!raw && window.goodyTheme && typeof window.goodyTheme.googleReviewsApiKey === 'string') {
+                    raw = window.goodyTheme.googleReviewsApiKey;
+                }
+                var m = String(raw || '').match(/(AIza[0-9A-Za-z_-]{20,})/);
+                return m && m[1] ? m[1] : '';
+            };
+
+            onReady(function () {
+                window.setTimeout(function () {
+                    var mapTarget = document.querySelector('[data-goody-map]');
+                    if (mapTarget && mapTarget.getAttribute('data-map-ready') !== '1' && !mapTarget.querySelector('iframe')) {
+                        var query = String(mapTarget.getAttribute('data-address') || mapTarget.getAttribute('data-title') || '').trim();
+                        if (query) {
+                            var iframe = document.createElement('iframe');
+                            iframe.loading = 'lazy';
+                            iframe.referrerPolicy = 'no-referrer-when-downgrade';
+                            iframe.src = 'https://www.google.com/maps?q=' + encodeURIComponent(query) + '&output=embed';
+                            iframe.style.width = '100%';
+                            iframe.style.minHeight = '340px';
+                            iframe.style.border = '0';
+                            mapTarget.innerHTML = '';
+                            mapTarget.appendChild(iframe);
+                            mapTarget.setAttribute('data-map-ready', '1');
+                        }
+                    }
+                }, 5000);
+
+                var reviewsRoot = document.querySelector('#reviews');
+                if (!reviewsRoot || reviewsRoot.querySelector('[data-review-card]')) {
+                    return;
+                }
+
+                var placeRaw = String(reviewsRoot.getAttribute('data-google-place-id') || '').trim();
+                var placeMatch = placeRaw.match(/\b(ChI[0-9A-Za-z_-]{10,})\b/);
+                var placeId = placeMatch && placeMatch[1] ? placeMatch[1] : '';
+                var apiKey = readGoogleKey();
+                if (!placeId || !apiKey) {
+                    return;
+                }
+
+                var boot = function () {
+                    if (!(window.google && google.maps && google.maps.places) || reviewsRoot.querySelector('[data-review-card]')) {
+                        return;
+                    }
+                    var holder = document.createElement('div');
+                    new google.maps.places.PlacesService(holder).getDetails({ placeId: placeId, fields: ['reviews'] }, function (res, status) {
+                        if (!(status === google.maps.places.PlacesServiceStatus.OK && res && Array.isArray(res.reviews) && res.reviews.length) || reviewsRoot.querySelector('[data-review-card]')) {
+                            return;
+                        }
+                        var grid = reviewsRoot.querySelector('.review-grid, .archive-grid.review-grid, .archive-grid--three.review-grid');
+                        if (!grid) {
+                            grid = document.createElement('div');
+                            grid.className = 'archive-grid archive-grid--three review-grid';
+                            var cta = reviewsRoot.querySelector('.review-cta');
+                            if (cta && cta.parentNode) {
+                                cta.parentNode.insertBefore(grid, cta);
+                            } else {
+                                reviewsRoot.appendChild(grid);
+                            }
+                        }
+                        res.reviews.slice(0, 6).forEach(function (r) {
+                            var rating = Math.max(1, Math.min(5, parseInt(r.rating || 0, 10) || 5));
+                            var card = document.createElement('article');
+                            card.className = 'card testimonial-card testimonial-card--google';
+                            card.setAttribute('data-review-card', '');
+                            card.innerHTML = '<div class="rating">' + Array(rating + 1).join('<span class="icon-star">★</span>') + '</div><div class="testimonial-card__content"></div><div class="testimonial-card__author"><div><strong></strong><span></span></div></div>';
+                            card.querySelector('.testimonial-card__content').textContent = String(r.text || '').trim() || 'Great experience.';
+                            card.querySelector('strong').textContent = String(r.author_name || 'Google User').trim();
+                            card.querySelector('span').textContent = String(r.relative_time_description || 'Google review').trim();
+                            grid.appendChild(card);
+                        });
+                    });
+                };
+
+                if (window.google && google.maps && google.maps.places) {
+                    boot();
+                    return;
+                }
+
+                var existing = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+                if (existing) {
+                    existing.addEventListener('load', boot, { once: true });
+                    return;
+                }
+
+                var script = document.createElement('script');
+                script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(apiKey) + '&libraries=places&loading=async';
+                script.async = true;
+                script.defer = true;
+                script.addEventListener('load', boot, { once: true });
+                document.head.appendChild(script);
+            });
+        }());
+    </script>
+    <?php
+}
+add_action('wp_footer', 'goody_print_map_reviews_runtime_fallback', 100);
 
 function goody_clear_delivery_cache_on_options_update($old_value, $value) {
     $old = is_array($old_value) ? $old_value : [];
@@ -1821,16 +1982,21 @@ function goody_clear_delivery_cache_on_options_update($old_value, $value) {
     }
 
     if ($reviews_related_changed) {
+        $delete_reviews_cache = static function ($key) {
+            delete_transient($key);
+            delete_transient($key . '_empty');
+        };
+
         foreach (array_unique($sources) as $source) {
-            delete_transient('goody_google_reviews_' . md5($source . '|' . $count));
+            $delete_reviews_cache('goody_google_reviews_' . md5($source . '|' . $count));
         }
 
         // Clear cache keys used by current review fetch logic.
         if ($place_id) {
-            delete_transient('goody_google_reviews_' . md5('pid:' . $place_id . '|' . $count));
+            $delete_reviews_cache('goody_google_reviews_' . md5('pid:' . $place_id . '|' . $count));
         }
         if ($cid) {
-            delete_transient('goody_google_reviews_' . md5('cid:' . $cid . '|' . $count));
+            $delete_reviews_cache('goody_google_reviews_' . md5('cid:' . $cid . '|' . $count));
         }
 
         $serp_sources = [];
@@ -1853,7 +2019,7 @@ function goody_clear_delivery_cache_on_options_update($old_value, $value) {
         $serp_sources[] = 'fallback';
 
         foreach (array_unique($serp_sources) as $serp_source) {
-            delete_transient('goody_google_reviews_' . md5('serp:' . $serp_source . '|' . $count));
+            $delete_reviews_cache('goody_google_reviews_' . md5('serp:' . $serp_source . '|' . $count));
         }
 
         $shared_reviews_key = goody_normalize_api_token($value['integrations_reviews_api_key'] ?? '');
@@ -1870,7 +2036,7 @@ function goody_clear_delivery_cache_on_options_update($old_value, $value) {
 
         foreach ($trustpilot_tokens as $token) {
             $cache_source = trim($trustpilot_url . '|' . $raw_source . '|' . md5((string) $token));
-            delete_transient('goody_google_reviews_' . md5('trustpilot:' . $cache_source . '|' . $count));
+            $delete_reviews_cache('goody_google_reviews_' . md5('trustpilot:' . $cache_source . '|' . $count));
         }
 
         $custom_tokens = array_unique(array_filter([
@@ -1883,7 +2049,12 @@ function goody_clear_delivery_cache_on_options_update($old_value, $value) {
 
         foreach ($custom_tokens as $token) {
             $cache_source = trim($custom_url . '|' . $raw_source . '|' . md5((string) $token));
-            delete_transient('goody_google_reviews_' . md5('custom:' . $cache_source . '|' . $count));
+            $delete_reviews_cache('goody_google_reviews_' . md5('custom:' . $cache_source . '|' . $count));
+        }
+
+        $next_reviews_sync = function_exists('wp_next_scheduled') ? wp_next_scheduled('goody_google_reviews_sync_event') : false;
+        if (function_exists('wp_schedule_single_event') && (! $next_reviews_sync || $next_reviews_sync > (time() + MINUTE_IN_SECONDS))) {
+            wp_schedule_single_event(time() + 15, 'goody_google_reviews_sync_event');
         }
     }
 

@@ -90,7 +90,8 @@ jQuery(function ($) {
         valid,
         valid ? '' : 'Please enter a valid URL with http:// or https://'
       );
-      return valid;
+      // Keep save flow unblocked for optional URL fields; backend sanitizer will normalize/empty invalid URLs.
+      return true;
     }
 
     if (validationType === 'number_range') {
@@ -205,13 +206,45 @@ jQuery(function ($) {
         selection.each(function (item) {
           const attachment = item.toJSON();
           ids.push(attachment.id);
-          thumbs.push('<img src="' + attachment.url + '" style="width:48px;height:48px;object-fit:cover;border-radius:6px;" alt="">');
+          thumbs.push(
+            '<span class="goody-gallery-thumb" data-id="' + attachment.id + '" style="position:relative;display:inline-flex;">' +
+              '<img src="' + attachment.url + '" style="width:48px;height:48px;object-fit:cover;border-radius:6px;" alt="">' +
+              '<button type="button" class="goody-gallery-thumb-remove" aria-label="Remove image" title="Remove image" style="position:absolute;top:-7px;right:-7px;border:0;border-radius:999px;width:18px;height:18px;line-height:18px;padding:0;background:#b32d2e;color:#fff;cursor:pointer;">&times;</button>' +
+            '</span>'
+          );
         });
 
         target.val(ids.join(','));
         preview.html(thumbs.join(''));
       }
     });
+  });
+
+  $(document).on('click', '.goody-gallery-clear', function (e) {
+    e.preventDefault();
+    const button = $(this);
+    const target = $('#' + button.data('target'));
+    const preview = button.siblings('.goody-gallery-preview');
+
+    target.val('');
+    preview.html('');
+  });
+
+  $(document).on('click', '.goody-gallery-thumb-remove', function (e) {
+    e.preventDefault();
+    const thumb = $(this).closest('.goody-gallery-thumb');
+    const preview = thumb.closest('.goody-gallery-preview');
+    const hidden = preview.siblings('.goody-gallery-field').first();
+
+    thumb.remove();
+
+    const keptIds = [];
+    preview.find('.goody-gallery-thumb').each(function () {
+      const id = String($(this).attr('data-id') || '').trim();
+      if (id) keptIds.push(id);
+    });
+
+    hidden.val(keptIds.join(','));
   });
 
   function updateRepeaterValue(repeater) {
