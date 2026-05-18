@@ -2006,6 +2006,10 @@ function goody_add_delivery_provider_cart_item_data($item_data, $cart_item) {
 add_filter('woocommerce_get_item_data', 'goody_add_delivery_provider_cart_item_data', 20, 2);
 
 function goody_prepend_checkout_delivery_provider_notice($content) {
+    if (locate_template('woocommerce/checkout/form-checkout.php', false, false)) {
+        return $content;
+    }
+
     if (
         ! function_exists('is_checkout')
         || ! is_checkout()
@@ -2028,6 +2032,10 @@ function goody_prepend_checkout_delivery_provider_notice($content) {
 add_filter('the_content', 'goody_prepend_checkout_delivery_provider_notice', 8);
 
 function goody_add_checkout_delivery_provider_field($fields) {
+    if (goody_is_store_api_request() || goody_is_block_checkout_context()) {
+        return $fields;
+    }
+
     if (! is_array($fields)) {
         return $fields;
     }
@@ -2037,19 +2045,27 @@ function goody_add_checkout_delivery_provider_field($fields) {
     // Hard-enforce exactly the requested customer fields.
     $fields['billing'] = [];
 
+    $name_field = isset($source_billing['billing_first_name']) && is_array($source_billing['billing_first_name']) ? $source_billing['billing_first_name'] : [];
+    $name_field['label'] = __('Full Name', 'goody');
+    $name_field['required'] = true;
+    $name_field['priority'] = 5;
+    $name_field['class'] = ['form-row-wide'];
+    $name_field['placeholder'] = __('Enter your full name', 'goody');
+    $fields['billing']['billing_first_name'] = $name_field;
+
     $phone_field = isset($source_billing['billing_phone']) && is_array($source_billing['billing_phone']) ? $source_billing['billing_phone'] : [];
     $phone_field['label'] = __('Phone Number', 'goody');
     $phone_field['required'] = true;
     $phone_field['priority'] = 20;
-    $phone_field['class'] = ['form-row-wide'];
+    $phone_field['class'] = ['form-row-first'];
     $phone_field['placeholder'] = __('e.g. +8801XXXXXXXXX', 'goody');
     $fields['billing']['billing_phone'] = $phone_field;
 
     $email_field = isset($source_billing['billing_email']) && is_array($source_billing['billing_email']) ? $source_billing['billing_email'] : [];
     $email_field['label'] = __('Email Address', 'goody');
     $email_field['required'] = true;
-    $email_field['priority'] = 10;
-    $email_field['class'] = ['form-row-wide'];
+    $email_field['priority'] = 15;
+    $email_field['class'] = ['form-row-last'];
     $fields['billing']['billing_email'] = $email_field;
 
     $address_field = isset($source_billing['billing_address_1']) && is_array($source_billing['billing_address_1']) ? $source_billing['billing_address_1'] : [];
@@ -2070,6 +2086,10 @@ function goody_add_checkout_delivery_provider_field($fields) {
 add_filter('woocommerce_checkout_fields', 'goody_add_checkout_delivery_provider_field', 999);
 
 function goody_relax_unneeded_address_requirements($fields) {
+    if (goody_is_store_api_request() || goody_is_block_checkout_context()) {
+        return $fields;
+    }
+
     if (! is_array($fields)) {
         return $fields;
     }
@@ -2090,6 +2110,10 @@ function goody_relax_unneeded_address_requirements($fields) {
 add_filter('woocommerce_default_address_fields', 'goody_relax_unneeded_address_requirements', 999);
 
 function goody_restrict_billing_field_requirements($fields) {
+    if (goody_is_store_api_request() || goody_is_block_checkout_context()) {
+        return $fields;
+    }
+
     if (! is_array($fields)) {
         return $fields;
     }
@@ -2151,7 +2175,79 @@ function goody_is_valid_checkout_phone($phone) {
     return true;
 }
 
+function goody_is_store_api_request() {
+    if (function_exists('wp_is_serving_rest_request') && wp_is_serving_rest_request()) {
+        return true;
+    }
+
+    if (function_exists('wp_doing_rest') && wp_doing_rest()) {
+        return true;
+    }
+
+    return defined('REST_REQUEST') && REST_REQUEST;
+}
+
+function goody_is_block_checkout_context() {
+    if (! empty($GLOBALS['goody_force_classic_checkout'])) {
+        return false;
+    }
+
+    // Theme-level checkout override is active, treat checkout as classic context.
+    if (locate_template('woocommerce/checkout/form-checkout.php', false, false)) {
+        return false;
+    }
+
+    if (! function_exists('is_checkout') || ! is_checkout()) {
+        return false;
+    }
+
+    if (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received')) {
+        return false;
+    }
+
+    $checkout_page_id = function_exists('wc_get_page_id') ? (int) wc_get_page_id('checkout') : 0;
+    if ($checkout_page_id <= 0) {
+        return false;
+    }
+
+    $checkout_post = get_post($checkout_page_id);
+    if (! ($checkout_post instanceof WP_Post)) {
+        return false;
+    }
+
+    return function_exists('has_block')
+        && has_block('woocommerce/checkout', $checkout_post)
+        && ! has_shortcode((string) $checkout_post->post_content, 'woocommerce_checkout');
+}
+
+function goody_strip_unwanted_checkout_billing_fields($fields) {
+    if (! is_array($fields)) {
+        return $fields;
+    }
+
+    $remove_keys = [
+        'billing_last_name',
+        'billing_country',
+        'billing_city',
+        'billing_state',
+        'billing_postcode',
+    ];
+
+    foreach ($remove_keys as $key) {
+        if (isset($fields[$key])) {
+            unset($fields[$key]);
+        }
+    }
+
+    return $fields;
+}
+add_filter('woocommerce_billing_fields', 'goody_strip_unwanted_checkout_billing_fields', 1001);
+
 function goody_add_checkout_honeypot_field($checkout) {
+    if (goody_is_block_checkout_context()) {
+        return;
+    }
+
     echo '<div class="goody-checkout-honeypot" aria-hidden="true">';
     woocommerce_form_field('goody_checkout_website', [
         'type' => 'text',
@@ -2166,6 +2262,11 @@ function goody_add_checkout_honeypot_field($checkout) {
 add_action('woocommerce_after_order_notes', 'goody_add_checkout_honeypot_field', 25);
 
 function goody_validate_checkout_delivery_provider() {
+    // WooCommerce block checkout uses Store API payload, not classic checkout POST fields.
+    if (goody_is_store_api_request() || goody_is_block_checkout_context()) {
+        return;
+    }
+
     $honeypot = sanitize_text_field((string) wp_unslash($_POST['goody_checkout_website'] ?? ''));
     if ($honeypot !== '' && function_exists('wc_add_notice')) {
         wc_add_notice(__('We could not process your request. Please refresh and try again.', 'goody'), 'error');
@@ -2173,6 +2274,11 @@ function goody_validate_checkout_delivery_provider() {
     }
 
     $phone = sanitize_text_field((string) wp_unslash($_POST['billing_phone'] ?? ''));
+    $full_name = sanitize_text_field((string) wp_unslash($_POST['billing_first_name'] ?? ''));
+    if ($full_name === '' && function_exists('wc_add_notice')) {
+        wc_add_notice(__('Full name is required.', 'goody'), 'error');
+    }
+
     if ($phone === '' && function_exists('wc_add_notice')) {
         wc_add_notice(__('Phone number is required.', 'goody'), 'error');
     } elseif (! goody_is_valid_checkout_phone($phone) && function_exists('wc_add_notice')) {

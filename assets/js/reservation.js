@@ -195,6 +195,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var state = {
       step: 1,
       bookingDayId: '',
+      bookingDate: '',
       slotTime: '',
       orderType: orderTypeKeys[0] || 'dine_in',
       paymentMode: paymentModeKeys[0] || 'full',
@@ -215,9 +216,9 @@ document.addEventListener('DOMContentLoaded', function () {
       return typeof texts[key] === 'string' && texts[key] !== '' ? texts[key] : fallback;
     }
 
-    function getDateById(id) {
+    function getDateBySelection(id, dateValue) {
       return dates.find(function (date) {
-        return String(date.id) === String(id);
+        return String(date.id) === String(id) && String(date.date || '') === String(dateValue || '');
       }) || null;
     }
 
@@ -316,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       var lines = [];
-      var date = getDateById(state.bookingDayId);
+      var date = getDateBySelection(state.bookingDayId, state.bookingDate);
       var zone = getZoneById(state.deliveryZoneId);
       var totals = calculateLocalTotals();
 
@@ -389,7 +390,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function syncSelectionUI() {
       Array.prototype.slice.call(app.querySelectorAll('[data-booking-day]')).forEach(function (button) {
-        button.classList.toggle('is-selected', String(button.getAttribute('data-booking-day')) === String(state.bookingDayId));
+        button.classList.toggle(
+          'is-selected',
+          String(button.getAttribute('data-booking-day')) === String(state.bookingDayId) &&
+          String(button.getAttribute('data-booking-date') || '') === String(state.bookingDate || '')
+        );
       });
 
       Array.prototype.slice.call(app.querySelectorAll('[data-order-type]')).forEach(function (button) {
@@ -523,6 +528,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function buildPayload() {
       return {
         booking_day_id: state.bookingDayId,
+        booking_date: state.bookingDate,
         slot_time: state.slotTime,
         order_type: state.orderType,
         payment_mode: state.paymentMode,
@@ -542,6 +548,7 @@ document.addEventListener('DOMContentLoaded', function () {
       var needs = getCapacityNeeds();
       return request('goody_reservation_slots', {
         booking_day_id: state.bookingDayId,
+        booking_date: state.bookingDate,
         order_type: state.orderType || '',
         selected_time: state.slotTime || '',
         person_need: String(needs.personNeed),
@@ -584,6 +591,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         button.addEventListener('click', function () {
           state.bookingDayId = button.getAttribute('data-booking-day') || '';
+          state.bookingDate = button.getAttribute('data-booking-date') || '';
           state.slotTime = '';
           syncSelectionUI();
           fetchSlots();

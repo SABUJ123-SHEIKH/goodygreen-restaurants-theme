@@ -104,34 +104,60 @@ JS;
         wp_enqueue_style('goody-fonts', $fonts_url, [], null);
     }
     $main_css_asset = goody_get_asset_path('assets/css/main.css');
+    $checkout_css_asset = goody_get_asset_path('assets/css/checkout.css');
     $main_js_asset = goody_get_asset_path('assets/js/main.js');
+    $checkout_js_asset = goody_get_asset_path('assets/js/checkout.js');
 
     wp_enqueue_style('goody-main', GOODY_THEME_URI . '/' . $main_css_asset, array_values(array_filter([$fonts_url !== '' ? 'goody-fonts' : ''])), GOODY_THEME_VERSION);
 
-    wp_enqueue_script('goody-main', GOODY_THEME_URI . '/' . $main_js_asset, [], GOODY_THEME_VERSION, true);
-    wp_localize_script('goody-main', 'goodyTheme', [
-        'ajaxUrl' => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('goody_nonce'),
-        'isFrontPage' => is_front_page(),
-        'mapsApiKey' => $maps_api_key,
-        'googleReviewsApiKey' => $google_reviews_api_key,
-    ]);
-    wp_script_add_data('goody-main', 'defer', true);
+    $checkout_page_id = function_exists('wc_get_page_id') ? (int) wc_get_page_id('checkout') : 0;
+    $is_checkout_page = (function_exists('is_checkout') && is_checkout())
+        || ($checkout_page_id > 0 && function_exists('is_page') && is_page($checkout_page_id));
+
+    if (! $is_checkout_page) {
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? wp_unslash((string) $_SERVER['REQUEST_URI']) : '';
+        if ($request_uri !== '') {
+            $normalized_path = strtolower((string) wp_parse_url($request_uri, PHP_URL_PATH));
+            $is_checkout_page = str_ends_with(rtrim($normalized_path, '/'), '/checkout');
+        }
+    }
+    // Checkout-specific visual overrides intentionally disabled.
+    if ($is_checkout_page) {
+        wp_enqueue_style('goody-checkout', GOODY_THEME_URI . '/' . $checkout_css_asset, ['goody-main'], GOODY_THEME_VERSION);
+        wp_enqueue_script('goody-checkout', GOODY_THEME_URI . '/' . $checkout_js_asset, [], GOODY_THEME_VERSION, true);
+        wp_script_add_data('goody-checkout', 'defer', true);
+    }
+
+    if (! $is_checkout_page) {
+        $goody_main_deps = [];
+        wp_enqueue_script('goody-main', GOODY_THEME_URI . '/' . $main_js_asset, $goody_main_deps, GOODY_THEME_VERSION, true);
+        wp_localize_script('goody-main', 'goodyTheme', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('goody_nonce'),
+            'isFrontPage' => is_front_page(),
+            'mapsApiKey' => $maps_api_key,
+            'googleReviewsApiKey' => $google_reviews_api_key,
+        ]);
+        wp_script_add_data('goody-main', 'defer', true);
+    }
 
     if (goody_should_enqueue_reservation_assets()) {
         $reservation_css_asset = goody_get_asset_path('assets/css/reservation.css');
         $reservation_js_asset = goody_get_asset_path('assets/js/reservation.js');
 
         wp_enqueue_style('goody-reservation', GOODY_THEME_URI . '/' . $reservation_css_asset, ['goody-main'], GOODY_THEME_VERSION);
-        wp_enqueue_script('goody-reservation', GOODY_THEME_URI . '/' . $reservation_js_asset, ['goody-main'], GOODY_THEME_VERSION, true);
-        wp_localize_script('goody-reservation', 'goodyReservationTheme', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('goody_nonce'),
-            'statusLookupUrl' => goody_get_reservation_status_lookup_page_url(),
-            'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '$',
-            'locale' => str_replace('_', '-', function_exists('determine_locale') ? determine_locale() : get_locale()),
-        ]);
-        wp_script_add_data('goody-reservation', 'defer', true);
+        if (! $is_checkout_page) {
+            $reservation_deps = ['goody-main'];
+            wp_enqueue_script('goody-reservation', GOODY_THEME_URI . '/' . $reservation_js_asset, $reservation_deps, GOODY_THEME_VERSION, true);
+            wp_localize_script('goody-reservation', 'goodyReservationTheme', [
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('goody_nonce'),
+                'statusLookupUrl' => goody_get_reservation_status_lookup_page_url(),
+                'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '$',
+                'locale' => str_replace('_', '-', function_exists('determine_locale') ? determine_locale() : get_locale()),
+            ]);
+            wp_script_add_data('goody-reservation', 'defer', true);
+        }
     }
 }
 add_action('wp_enqueue_scripts', 'goody_enqueue_assets');

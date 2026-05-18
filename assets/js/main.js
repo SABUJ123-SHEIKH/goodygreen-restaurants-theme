@@ -1556,13 +1556,24 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  const checkoutForm = document.querySelector('form.checkout');
+  const blockCheckout = document.querySelector('.wp-block-woocommerce-checkout');
+  const checkoutForm = !blockCheckout ? document.querySelector('form.checkout') : null;
   if (checkoutForm) {
     const phoneField = checkoutForm.querySelector('#billing_phone');
     const emailField = checkoutForm.querySelector('#billing_email');
     const addressField = checkoutForm.querySelector('#billing_address_1');
     const placeOrderButton = checkoutForm.querySelector('#place_order');
     const phoneBlocked = new Set(['00000000', '11111111', '12345678', '99999999', '0123456789']);
+    const isFieldEffectivelyVisible = function (field) {
+      if (!field) return false;
+      if (field.disabled) return false;
+      if (field.type === 'hidden') return false;
+      const row = field.closest('.form-row') || field.parentElement;
+      if (!row) return true;
+      if (row.hidden) return false;
+      if (window.getComputedStyle(row).display === 'none') return false;
+      return true;
+    };
 
     const ensureMessageNode = function (field) {
       if (!field) return null;
@@ -1588,6 +1599,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const validatePhone = function () {
       if (!phoneField) return true;
+      if (!isFieldEffectivelyVisible(phoneField)) {
+        setFieldState(phoneField, true, '');
+        return true;
+      }
       const raw = String(phoneField.value || '').trim();
       if (!raw) {
         setFieldState(phoneField, false, 'Phone number is required.');
@@ -1612,6 +1627,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const validateEmail = function () {
       if (!emailField) return true;
+      if (!isFieldEffectivelyVisible(emailField)) {
+        setFieldState(emailField, true, '');
+        return true;
+      }
       const raw = String(emailField.value || '').trim();
       if (!raw) {
         setFieldState(emailField, false, 'Email address is required.');
@@ -1624,6 +1643,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const validateAddress = function () {
       if (!addressField) return true;
+      if (!isFieldEffectivelyVisible(addressField)) {
+        setFieldState(addressField, true, '');
+        return true;
+      }
       const raw = String(addressField.value || '').trim();
       const ok = raw.length > 0;
       setFieldState(addressField, ok, ok ? '' : 'Full address is required.');
@@ -1655,118 +1678,5 @@ document.addEventListener('DOMContentLoaded', function () {
     validateCheckoutForm();
   }
 
-  const blockCheckout = document.querySelector('.wp-block-woocommerce-checkout');
-  if (blockCheckout) {
-    const hideFieldSelectors = [
-      '.wc-block-components-address-form__first_name',
-      '.wc-block-components-address-form__last_name',
-      '.wc-block-components-address-form__company',
-      '.wc-block-components-address-form__country',
-      '.wc-block-components-address-form__address_2',
-      '.wc-block-components-address-form__city',
-      '.wc-block-components-address-form__state',
-      '.wc-block-components-address-form__postcode',
-      '.wc-block-components-checkout-step--additional-information',
-      '.wc-block-checkout__shipping-fields'
-    ];
-
-    let blockRulesApplying = false;
-    let blockRulesQueued = false;
-
-    const queueBlockRules = function () {
-      if (blockRulesQueued) return;
-      blockRulesQueued = true;
-      window.requestAnimationFrame(function () {
-        blockRulesQueued = false;
-        applyBlockCheckoutFieldRules();
-      });
-    };
-
-    const applyBlockCheckoutFieldRules = function () {
-      if (blockRulesApplying) return;
-      blockRulesApplying = true;
-
-      hideFieldSelectors.forEach(function (selector) {
-        blockCheckout.querySelectorAll(selector).forEach(function (node) {
-          if (!node) return;
-          if (node.style.display !== 'none') {
-            node.style.display = 'none';
-          }
-        });
-      });
-
-      // Keep order as Email -> Phone -> Address in Checkout Block forms.
-      blockCheckout.querySelectorAll('.wc-block-components-address-form').forEach(function (form) {
-        const emailField = form.querySelector('.wc-block-components-address-form__email');
-        const phoneField = form.querySelector('.wc-block-components-address-form__phone');
-        const addressField = form.querySelector('.wc-block-components-address-form__address_1');
-
-        if (
-          emailField &&
-          phoneField &&
-          emailField.parentNode === phoneField.parentNode &&
-          emailField.nextElementSibling !== phoneField
-        ) {
-          emailField.parentNode.insertBefore(phoneField, emailField.nextSibling);
-        }
-        if (
-          phoneField &&
-          addressField &&
-          phoneField.parentNode === addressField.parentNode &&
-          phoneField.nextElementSibling !== addressField
-        ) {
-          phoneField.parentNode.insertBefore(addressField, phoneField.nextSibling);
-        }
-
-        const phoneInput = form.querySelector('input[name="billing_phone"]');
-        if (phoneInput) {
-          phoneInput.required = true;
-          phoneInput.setAttribute('aria-required', 'true');
-        }
-
-        if (phoneField) {
-          const phoneLabel = phoneField.querySelector('label');
-          if (phoneLabel) {
-            const cleanedText = String(phoneLabel.textContent || '').replace(/\(optional\)/ig, '').trim();
-            if (cleanedText) {
-              phoneLabel.textContent = cleanedText;
-            }
-          }
-        }
-      });
-
-      const defaults = [
-        { selector: 'input[name="billing_first_name"]', value: 'Customer' },
-        { selector: 'input[name="billing_last_name"]', value: 'Guest' },
-        { selector: 'input[name="billing_city"]', value: 'N/A' },
-        { selector: 'input[name="billing_postcode"]', value: '0000' }
-      ];
-
-      defaults.forEach(function (item) {
-        const input = blockCheckout.querySelector(item.selector);
-        if (!input) return;
-        if (String(input.value || '').trim()) return;
-        input.value = item.value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-
-      const countrySelect = blockCheckout.querySelector('select[name="billing_country"]');
-      if (countrySelect && String(countrySelect.value || '').trim() === '') {
-        const fallbackValue = countrySelect.querySelector('option[value="BD"]') ? 'BD' : (countrySelect.value || '');
-        if (fallbackValue) {
-          countrySelect.value = fallbackValue;
-          countrySelect.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }
-
-      blockRulesApplying = false;
-    };
-
-    queueBlockRules();
-    const blockObserver = new MutationObserver(function () {
-      queueBlockRules();
-    });
-    blockObserver.observe(blockCheckout, { childList: true, subtree: true });
-  }
+  // Keep WooCommerce Block Checkout untouched to avoid breaking React checkout validation/submission flow.
 });

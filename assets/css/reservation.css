@@ -143,7 +143,6 @@
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  padding: 0.95rem 1rem;
   border-radius: 22px;
   background: color-mix(in srgb, var(--goody-theme-soft-background) 82%, var(--goody-theme-card) 18%);
   border: 1px solid var(--goody-reservation-border);
@@ -169,8 +168,8 @@
 }
 
 .goody-reservation-steps li.is-active {
-  background: color-mix(in srgb, var(--goody-reservation-button) 90%, var(--goody-theme-section) 10%);
-  border-color: color-mix(in srgb, var(--goody-reservation-button) 82%, var(--goody-theme-section) 18%);
+    background: var(--goody-theme-card);
+border-color: var(--goody-reservation-accent);
   box-shadow: 0 14px 30px color-mix(in srgb, var(--goody-reservation-button) 28%, transparent);
 }
 
@@ -248,9 +247,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 58px;
-  padding: 1rem 1.6rem;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--goody-reservation-button) 90%, var(--goody-theme-section) 10%), color-mix(in srgb, var(--goody-reservation-button) 84%, var(--goody-theme-section) 16%));
+min-height: 40px;
+    padding: 0rem .7rem;
+background: var(--goody-reservation-accent);
   color: var(--goody-reservation-button-text);
   font-weight: 800;
   text-decoration: none;
@@ -366,7 +365,7 @@
 
 .goody-date-card.is-selected {
   border-color: var(--goody-reservation-accent);
-  background: color-mix(in srgb, var(--goody-reservation-accent) 18%, var(--goody-theme-soft-background) 82%);
+  background: var(--color-primary);
   box-shadow: 0 14px 30px color-mix(in srgb, var(--goody-reservation-accent) 28%, transparent);
 }
 
@@ -492,7 +491,7 @@
   position: relative;
   display: grid;
   overflow: hidden;
-  border-radius: calc(var(--radius-md, 14px) + 10px);
+  border-radius: calc(var(--radius-md, 0px) + -10px);
   min-height: 100%;
   background: linear-gradient(180deg, color-mix(in srgb, var(--goody-theme-card) 90%, var(--goody-theme-soft-background) 10%), color-mix(in srgb, var(--goody-theme-card) 82%, var(--goody-theme-background) 18%));
   transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
@@ -599,7 +598,7 @@
 }
 
 .goody-booking-card__head strong {
-  color: var(--goody-reservation-button);
+  color: var(--muted-color);
   font-size: 1rem;
   white-space: nowrap;
 }
@@ -622,8 +621,8 @@
   align-items: center;
   padding: 0.4rem 0.7rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--goody-theme-soft-background) 74%, var(--goody-theme-primary) 26%);
-  color: var(--goody-reservation-button);
+  background: var(--color-muted);
+  color: var(--button-text-color);
   font-size: 0.8rem;
   font-weight: 700;
 }
@@ -676,12 +675,12 @@
 .goody-form-grid textarea,
 .goody-status-form input {
   width: 100%;
-  min-height: 50px;
+  min-height: 35px;
   border-radius: 16px;
   border: 1px solid var(--goody-reservation-border);
   background: color-mix(in srgb, var(--goody-theme-soft-background) 82%, var(--goody-theme-card) 18%);
   color: var(--goody-reservation-text);
-  padding: 0.82rem 0.95rem;
+  padding: 0.4rem 0.95rem;
 }
 
 .goody-item-select {
@@ -1180,6 +1179,15 @@
   color: var(--goody-reservation-step-muted-text) !important;
 }
 
+.goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-date-card__day{
+  position: absolute;
+    left: 0;
+    background: var(--goody-reservation-accent);
+    padding: 0px 7px;
+    bottom: 0;
+    width: 100%;
+    border-radius: 0 0 12px 12px;
+}
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-choice-card,
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-slot-card,
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-date-card,
@@ -1195,7 +1203,7 @@
 
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-reservation-steps li span {
   color: var(--goody-reservation-step-text) !important;
-  background: color-mix(in srgb, var(--goody-theme-soft-background) 54%, var(--goody-theme-primary) 46%) !important;
+background: var(--goody-reservation-accent);
 }
 
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-choice-card.is-selected,
@@ -1204,7 +1212,8 @@
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-reservation-steps li.is-active,
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-item-select,
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .button {
-  color: var(--goody-reservation-selected-text) !important;
+    color: var(--color-button-text);
+    background: var(--goody-reservation-accent) ;
 }
 
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-slot-card.is-selected .goody-slot-card__time,
@@ -1212,7 +1221,7 @@
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-slot-card.is-selected .goody-slot-card__state,
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-reservation-steps li.is-active strong,
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-reservation-steps li.is-active span {
-  color: var(--goody-reservation-selected-text) !important;
+  color: var(--button-text-color) !important;
 }
 
 .goody-page-section--reservation .goody-reservation-steps li.is-active span {
@@ -1243,7 +1252,10 @@
 .goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-booking-card__check {
   color: var(--goody-reservation-button-text) !important;
 }
-
+.goody-page-section.goody-page-section--reservation .goody-reservation-shell .goody-date-card{
+        position: relative;
+    padding-bottom: 23px;
+}
 @media (max-width: 1180px) {
   .goody-reservation-layout {
     grid-template-columns: 1fr;

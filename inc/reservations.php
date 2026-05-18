@@ -229,6 +229,52 @@ function goody_get_menu_item_display_name($menu_item_id) {
     return $default_name;
 }
 
+function goody_sync_menu_item_wc_product($menu_item_id) {
+    $menu_item_id = absint($menu_item_id);
+    if ($menu_item_id < 1 || get_post_type($menu_item_id) !== 'menu_item') {
+        return 0;
+    }
+    if (! class_exists('WooCommerce') || ! function_exists('wc_get_product') || ! class_exists('WC_Product_Simple')) {
+        return 0;
+    }
+
+    $product_id = absint(get_post_meta($menu_item_id, 'goody_menu_wc_product_id', true));
+    $product = $product_id > 0 ? wc_get_product($product_id) : null;
+    if (! $product instanceof WC_Product) {
+        $product = new WC_Product_Simple();
+    }
+
+    $menu_name = trim((string) get_the_title($menu_item_id));
+    if ($menu_name === '') {
+        $menu_name = sprintf(__('Menu Item #%d', 'goody'), $menu_item_id);
+    }
+    $menu_price = max(0, (float) get_post_meta($menu_item_id, 'goody_menu_price', true));
+    $menu_desc = (string) get_post_meta($menu_item_id, 'goody_menu_short_desc', true);
+
+    $product->set_name($menu_name);
+    $product->set_status('publish');
+    $product->set_catalog_visibility('hidden');
+    $product->set_regular_price((string) $menu_price);
+    $product->set_price((string) $menu_price);
+    $product->set_description(wp_kses_post($menu_desc));
+    $product->set_short_description(sanitize_text_field($menu_desc));
+    $product->set_virtual(true);
+    $product->set_sold_individually(false);
+    $product->set_manage_stock(false);
+    $product->set_reviews_allowed(false);
+    $product->set_slug(sanitize_title($menu_name . '-' . $menu_item_id));
+
+    $saved_id = (int) $product->save();
+    if ($saved_id < 1) {
+        return 0;
+    }
+
+    update_post_meta($menu_item_id, 'goody_menu_wc_product_id', (string) $saved_id);
+    update_post_meta($saved_id, '_goody_menu_item_id', (string) $menu_item_id);
+
+    return $saved_id;
+}
+
 function goody_get_reservation_step_titles() {
     $defaults = goody_get_reservation_step_defaults();
 
@@ -510,10 +556,44 @@ function goody_render_booking_day_meta_box($post) {
     if (! is_array($slots)) {
         $slots = [];
     }
+    $order_types = goody_get_reservation_order_types();
+    $selected_global_types = [];
+    foreach ($slots as $slot_row) {
+        $raw_types = (string) ($slot_row['order_types'] ?? '');
+        if ($raw_types === '') {
+            $selected_global_types = array_keys($order_types);
+            break;
+        }
+        $slot_types = array_values(array_filter(array_map('sanitize_key', array_map('trim', explode(',', $raw_types)))));
+        if (! empty($slot_types)) {
+            if (empty($selected_global_types)) {
+                $selected_global_types = $slot_types;
+            } else {
+                $selected_global_types = array_values(array_intersect($selected_global_types, $slot_types));
+            }
+        }
+    }
+    if (empty($selected_global_types)) {
+        $selected_global_types = array_keys($order_types);
+    }
+    $service_date = (string) get_post_meta($post->ID, 'goody_booking_service_date', true);
+    $service_date_from = (string) get_post_meta($post->ID, 'goody_booking_service_date_from', true);
+    $service_date_to = (string) get_post_meta($post->ID, 'goody_booking_service_date_to', true);
+    if ($service_date_from === '') {
+        $service_date_from = $service_date;
+    }
+    if ($service_date_to === '') {
+        $service_date_to = $service_date_from;
+    }
     ?>
     <p>
         <label for="goody_booking_service_date"><strong><?php esc_html_e('Service Date', 'goody'); ?></strong></label><br>
-        <input style="width:100%;" type="date" id="goody_booking_service_date" name="goody_booking_service_date" value="<?php echo esc_attr((string) get_post_meta($post->ID, 'goody_booking_service_date', true)); ?>">
+        <input style="width:100%;" type="date" id="goody_booking_service_date" name="goody_booking_service_date" value="<?php echo esc_attr($service_date_from); ?>">
+    </p>
+    <p>
+        <label for="goody_booking_service_date_to"><strong><?php esc_html_e('Service Date End (optional)', 'goody'); ?></strong></label><br>
+        <input style="width:100%;" type="date" id="goody_booking_service_date_to" name="goody_booking_service_date_to" value="<?php echo esc_attr($service_date_to); ?>">
+        <small style="display:block;margin-top:4px;"><?php esc_html_e('If set, this one booking entry will be available for all dates from Service Date to End Date.', 'goody'); ?></small>
     </p>
     <p>
         <label>
@@ -524,6 +604,15 @@ function goody_render_booking_day_meta_box($post) {
     <p>
         <label for="goody_booking_day_note"><strong><?php esc_html_e('Booking Note', 'goody'); ?></strong></label><br>
         <textarea style="width:100%;min-height:88px;" id="goody_booking_day_note" name="goody_booking_day_note"><?php echo esc_textarea((string) get_post_meta($post->ID, 'goody_booking_day_note', true)); ?></textarea>
+    </p>
+    <p><strong><?php esc_html_e('Allowed Order Types (apply to all slots)', 'goody'); ?></strong></p>
+    <p>
+        <?php foreach ($order_types as $type_key => $type_label) : ?>
+            <label style="display:inline-flex;align-items:center;margin-right:14px;">
+                <input type="checkbox" name="goody_booking_allowed_types[]" value="<?php echo esc_attr($type_key); ?>" <?php checked(in_array($type_key, $selected_global_types, true)); ?>>
+                <span style="margin-left:4px;"><?php echo esc_html($type_label); ?></span>
+            </label>
+        <?php endforeach; ?>
     </p>
     <p><strong><?php esc_html_e('Time Slots', 'goody'); ?></strong></p>
     <input type="hidden" class="goody-repeater-input" id="goody_booking_slots" name="goody_booking_slots" value="<?php echo esc_attr($slots_raw); ?>">
@@ -719,8 +808,30 @@ function goody_save_reservation_meta_boxes($post_id) {
     }
 
     if ($post_type === 'goody_booking_day') {
-        if (isset($_POST['goody_booking_service_date'])) {
-            update_post_meta($post_id, 'goody_booking_service_date', sanitize_text_field(wp_unslash($_POST['goody_booking_service_date'])));
+        $allowed_types_input = isset($_POST['goody_booking_allowed_types']) ? (array) wp_unslash($_POST['goody_booking_allowed_types']) : [];
+        $allowed_types = [];
+        foreach ($allowed_types_input as $type_key) {
+            $type_key = sanitize_key((string) $type_key);
+            if (in_array($type_key, ['dine_in', 'pickup', 'delivery'], true)) {
+                $allowed_types[] = $type_key;
+            }
+        }
+        $allowed_types = array_values(array_unique($allowed_types));
+
+        $service_date_from = sanitize_text_field((string) ($_POST['goody_booking_service_date'] ?? ''));
+        $service_date_to = sanitize_text_field((string) ($_POST['goody_booking_service_date_to'] ?? ''));
+        if ($service_date_from !== '') {
+            update_post_meta($post_id, 'goody_booking_service_date', $service_date_from);
+            update_post_meta($post_id, 'goody_booking_service_date_from', $service_date_from);
+        }
+        if ($service_date_to === '') {
+            $service_date_to = $service_date_from;
+        }
+        if ($service_date_to !== '') {
+            if ($service_date_from !== '' && $service_date_to < $service_date_from) {
+                $service_date_to = $service_date_from;
+            }
+            update_post_meta($post_id, 'goody_booking_service_date_to', $service_date_to);
         }
 
         if (isset($_POST['goody_booking_day_note'])) {
@@ -728,21 +839,44 @@ function goody_save_reservation_meta_boxes($post_id) {
         }
 
         update_post_meta($post_id, 'goody_booking_day_active', isset($_POST['goody_booking_day_active']) ? '1' : '0');
-        update_post_meta($post_id, 'goody_booking_slots', goody_sanitize_booking_slots_json(wp_unslash($_POST['goody_booking_slots'] ?? '[]')));
+        $slots = json_decode(goody_sanitize_booking_slots_json(wp_unslash($_POST['goody_booking_slots'] ?? '[]')), true);
+        if (! is_array($slots)) {
+            $slots = [];
+        }
+        if (! empty($allowed_types) && count($allowed_types) < 3) {
+            $allowed_types_csv = implode(',', $allowed_types);
+            foreach ($slots as $slot_index => $slot_row) {
+                if (! is_array($slot_row)) {
+                    continue;
+                }
+                $slots[$slot_index]['order_types'] = $allowed_types_csv;
+            }
+        } else {
+            foreach ($slots as $slot_index => $slot_row) {
+                if (! is_array($slot_row)) {
+                    continue;
+                }
+                $slots[$slot_index]['order_types'] = '';
+            }
+        }
+        $slots_json = wp_json_encode(array_values($slots));
+        update_post_meta($post_id, 'goody_booking_slots', $slots_json);
 
-        $service_date = sanitize_text_field((string) ($_POST['goody_booking_service_date'] ?? ''));
-        if ($service_date !== '') {
+        if ($service_date_from !== '') {
             remove_action('save_post', 'goody_save_reservation_meta_boxes');
             wp_update_post([
                 'ID' => $post_id,
                 'post_title' => sprintf(
-                    /* translators: %s is a booking date. */
-                    __('Booking %s', 'goody'),
-                    $service_date
+                    /* translators: 1: start date, 2: end date. */
+                    $service_date_to !== '' && $service_date_to !== $service_date_from ? __('Booking %1$s to %2$s', 'goody') : __('Booking %1$s', 'goody'),
+                    $service_date_from,
+                    $service_date_to
                 ),
             ]);
             add_action('save_post', 'goody_save_reservation_meta_boxes');
         }
+        delete_transient('goody_available_booking_days_v1');
+
     }
 
     if ($post_type === 'goody_delivery_zone') {
@@ -777,6 +911,24 @@ function goody_save_reservation_meta_boxes($post_id) {
     }
 }
 add_action('save_post', 'goody_save_reservation_meta_boxes');
+
+function goody_sync_menu_item_wc_product_on_save($post_id, $post, $update) {
+    if (! $post instanceof WP_Post || $post->post_type !== 'menu_item') {
+        return;
+    }
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+    }
+    if (wp_is_post_revision($post_id)) {
+        return;
+    }
+    if (! current_user_can('edit_post', $post_id)) {
+        return;
+    }
+
+    goody_sync_menu_item_wc_product($post_id);
+}
+add_action('save_post_menu_item', 'goody_sync_menu_item_wc_product_on_save', 30, 3);
 
 function goody_get_menu_item_addons($menu_item_id) {
     $raw = (string) get_post_meta($menu_item_id, 'goody_menu_addons_data', true);
@@ -969,6 +1121,7 @@ function goody_get_available_booking_days() {
     ]);
 
     $days = [];
+    $seen_service_dates = [];
     if (! $query->have_posts()) {
         return $days;
     }
@@ -977,48 +1130,74 @@ function goody_get_available_booking_days() {
         $query->the_post();
         $booking_day_id = get_the_ID();
         $service_date = (string) get_post_meta($booking_day_id, 'goody_booking_service_date', true);
+        $service_date_from = (string) get_post_meta($booking_day_id, 'goody_booking_service_date_from', true);
+        $service_date_to = (string) get_post_meta($booking_day_id, 'goody_booking_service_date_to', true);
+        if ($service_date_from === '') {
+            $service_date_from = $service_date;
+        }
+        if ($service_date_to === '') {
+            $service_date_to = $service_date_from;
+        }
         $active = (string) get_post_meta($booking_day_id, 'goody_booking_day_active', true);
-        if ($service_date === '' || $active === '0') {
+        if ($service_date_from === '' || $active === '0') {
             continue;
         }
-        if ($service_date < $today || $service_date > $max_date) {
-            continue;
+        if ($service_date_to < $service_date_from) {
+            $service_date_to = $service_date_from;
         }
-        if (in_array($service_date, $disabled_dates, true)) {
+
+        $cursor = strtotime($service_date_from . ' 00:00:00');
+        $end_ts = strtotime($service_date_to . ' 00:00:00');
+        if ($cursor === false || $end_ts === false) {
             continue;
         }
 
-        if ($max_bookings > 0) {
-            $day_query = new WP_Query([
-                'post_type' => 'goody_reservation',
-                'post_status' => 'publish',
-                'posts_per_page' => 1,
-                'fields' => 'ids',
-                'meta_query' => [
-                    [
-                        'key' => 'goody_reservation_date',
-                        'value' => $service_date,
-                    ],
-                    [
-                        'key' => 'goody_reservation_status',
-                        'value' => 'cancelled',
-                        'compare' => '!=',
-                    ],
-                ],
-            ]);
-            if ((int) $day_query->found_posts >= $max_bookings) {
+        while ($cursor <= $end_ts) {
+            $date_cursor = gmdate('Y-m-d', $cursor);
+            $cursor = strtotime('+1 day', $cursor);
+            if ($date_cursor < $today || $date_cursor > $max_date) {
                 continue;
             }
-        }
+            if (in_array($date_cursor, $disabled_dates, true)) {
+                continue;
+            }
+            if (isset($seen_service_dates[$date_cursor])) {
+                continue;
+            }
 
-        $days[] = [
-            'id' => $booking_day_id,
-            'date' => $service_date,
-            'title' => get_the_title(),
-            'note' => (string) get_post_meta($booking_day_id, 'goody_booking_day_note', true),
-            'display' => date_i18n('D, j M', strtotime($service_date . ' 00:00:00')),
-            'slots' => goody_get_booking_day_slots($booking_day_id),
-        ];
+            if ($max_bookings > 0) {
+                $day_query = new WP_Query([
+                    'post_type' => 'goody_reservation',
+                    'post_status' => 'publish',
+                    'posts_per_page' => 1,
+                    'fields' => 'ids',
+                    'meta_query' => [
+                        [
+                            'key' => 'goody_reservation_date',
+                            'value' => $date_cursor,
+                        ],
+                        [
+                            'key' => 'goody_reservation_status',
+                            'value' => 'cancelled',
+                            'compare' => '!=',
+                        ],
+                    ],
+                ]);
+                if ((int) $day_query->found_posts >= $max_bookings) {
+                    continue;
+                }
+            }
+
+            $days[] = [
+                'id' => $booking_day_id,
+                'date' => $date_cursor,
+                'title' => get_the_title(),
+                'note' => (string) get_post_meta($booking_day_id, 'goody_booking_day_note', true),
+                'display' => date_i18n('D, j M', strtotime($date_cursor . ' 00:00:00')),
+                'slots' => goody_get_booking_day_slots($booking_day_id),
+            ];
+            $seen_service_dates[$date_cursor] = true;
+        }
     }
     wp_reset_postdata();
 
@@ -1161,27 +1340,36 @@ function goody_is_slot_cutoff_passed($service_date, $slot_time, $cutoff_minutes 
     return current_time('timestamp') >= $threshold;
 }
 
-function goody_get_reservation_capacity_usage($booking_day_id, $slot_time) {
+function goody_get_reservation_capacity_usage($booking_day_id, $slot_time, $service_date = '') {
     $usage = [
         'persons' => 0,
         'kg' => 0,
     ];
+    $service_date = sanitize_text_field((string) $service_date);
+
+    $meta_query = [
+        [
+            'key' => 'goody_booking_day_id',
+            'value' => absint($booking_day_id),
+        ],
+        [
+            'key' => 'goody_reservation_slot_time',
+            'value' => sanitize_text_field((string) $slot_time),
+        ],
+    ];
+    if ($service_date !== '') {
+        $meta_query[] = [
+            'key' => 'goody_reservation_date',
+            'value' => $service_date,
+        ];
+    }
 
     $query = new WP_Query([
         'post_type' => 'goody_reservation',
         'post_status' => 'publish',
         'posts_per_page' => -1,
         'fields' => 'ids',
-        'meta_query' => [
-            [
-                'key' => 'goody_booking_day_id',
-                'value' => absint($booking_day_id),
-            ],
-            [
-                'key' => 'goody_reservation_slot_time',
-                'value' => sanitize_text_field((string) $slot_time),
-            ],
-        ],
+        'meta_query' => $meta_query,
     ]);
 
     foreach ($query->posts as $reservation_id) {
@@ -1201,11 +1389,34 @@ function goody_should_lock_booked_reservation_slots() {
     return goody_get_option('reservation_lock_booked_slots', '1') === '1';
 }
 
-function goody_is_reservation_slot_reserved($booking_day_id, $slot_time) {
+function goody_is_reservation_slot_reserved($booking_day_id, $slot_time, $service_date = '') {
     $booking_day_id = absint($booking_day_id);
     $slot_time = sanitize_text_field((string) $slot_time);
+    $service_date = sanitize_text_field((string) $service_date);
     if (! goody_should_lock_booked_reservation_slots() || $booking_day_id < 1 || $slot_time === '') {
         return false;
+    }
+
+    $meta_query = [
+        [
+            'key' => 'goody_booking_day_id',
+            'value' => $booking_day_id,
+        ],
+        [
+            'key' => 'goody_reservation_slot_time',
+            'value' => $slot_time,
+        ],
+        [
+            'key' => 'goody_reservation_status',
+            'value' => 'cancelled',
+            'compare' => '!=',
+        ],
+    ];
+    if ($service_date !== '') {
+        $meta_query[] = [
+            'key' => 'goody_reservation_date',
+            'value' => $service_date,
+        ];
     }
 
     $query = new WP_Query([
@@ -1214,28 +1425,17 @@ function goody_is_reservation_slot_reserved($booking_day_id, $slot_time) {
         'posts_per_page' => 1,
         'fields' => 'ids',
         'no_found_rows' => true,
-        'meta_query' => [
-            [
-                'key' => 'goody_booking_day_id',
-                'value' => $booking_day_id,
-            ],
-            [
-                'key' => 'goody_reservation_slot_time',
-                'value' => $slot_time,
-            ],
-            [
-                'key' => 'goody_reservation_status',
-                'value' => 'cancelled',
-                'compare' => '!=',
-            ],
-        ],
+        'meta_query' => $meta_query,
     ]);
 
     return ! empty($query->posts);
 }
 
-function goody_render_reservation_slot_cards($booking_day_id, $order_type = '', $selected_time = '', $selected_person_need = 0, $selected_kg_need = 0) {
-    $service_date = (string) get_post_meta($booking_day_id, 'goody_booking_service_date', true);
+function goody_render_reservation_slot_cards($booking_day_id, $order_type = '', $selected_time = '', $selected_person_need = 0, $selected_kg_need = 0, $service_date_override = '') {
+    $service_date = sanitize_text_field((string) $service_date_override);
+    if ($service_date === '') {
+        $service_date = (string) get_post_meta($booking_day_id, 'goody_booking_service_date', true);
+    }
     $slots = goody_get_booking_day_slots($booking_day_id);
 
     if (empty($slots)) {
@@ -1260,7 +1460,7 @@ function goody_render_reservation_slot_cards($booking_day_id, $order_type = '', 
         $is_enabled = ! isset($slot['enabled']) || (string) $slot['enabled'] === '1';
         $capacity_persons = max(0, absint($slot['capacity_persons'] ?? 0));
         $capacity_kg = max(0, (float) ($slot['capacity_kg'] ?? 0));
-        $usage = goody_get_reservation_capacity_usage($booking_day_id, $time);
+        $usage = goody_get_reservation_capacity_usage($booking_day_id, $time, $service_date);
         $remaining_persons = max(0, $capacity_persons - $usage['persons']);
         $remaining_kg = max(0, $capacity_kg - $usage['kg']);
         $slot_cutoff = max(0, absint($slot['cutoff_minutes'] ?? 0));
@@ -1268,7 +1468,7 @@ function goody_render_reservation_slot_cards($booking_day_id, $order_type = '', 
         $cutoff_passed = goody_is_slot_cutoff_passed($service_date, $time, $slot_cutoff > 0 ? $slot_cutoff : null);
         $fits_persons = $capacity_persons <= 0 || $selected_person_need <= $remaining_persons;
         $fits_kg = $capacity_kg <= 0 || $selected_kg_need <= $remaining_kg;
-        $slot_reserved = goody_is_reservation_slot_reserved($booking_day_id, $time);
+        $slot_reserved = goody_is_reservation_slot_reserved($booking_day_id, $time, $service_date);
         $is_disabled = ! $is_enabled || ! $matches_order_type || $cutoff_passed || $slot_reserved || ! $fits_persons || ! $fits_kg;
         $selected_class = $selected_time === $time ? ' is-selected' : '';
 
@@ -1353,6 +1553,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
     }
 
     $booking_day_id = absint($payload['booking_day_id'] ?? 0);
+    $selected_booking_date = sanitize_text_field((string) ($payload['booking_date'] ?? ''));
     $slot_time = sanitize_text_field((string) ($payload['slot_time'] ?? ''));
     $order_type = sanitize_key((string) ($payload['order_type'] ?? ''));
     $payment_mode = sanitize_key((string) ($payload['payment_mode'] ?? 'full'));
@@ -1371,9 +1572,27 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
     }
 
     $booking_day_date = (string) get_post_meta($booking_day_id, 'goody_booking_service_date', true);
-    if ($booking_day_date === '') {
+    $booking_day_start = (string) get_post_meta($booking_day_id, 'goody_booking_service_date_from', true);
+    $booking_day_end = (string) get_post_meta($booking_day_id, 'goody_booking_service_date_to', true);
+    if ($booking_day_start === '') {
+        $booking_day_start = $booking_day_date;
+    }
+    if ($booking_day_end === '') {
+        $booking_day_end = $booking_day_start;
+    }
+    if ($booking_day_start === '') {
         return new WP_Error('invalid_day', __('Selected date is not available.', 'goody'));
     }
+    if ($booking_day_end < $booking_day_start) {
+        $booking_day_end = $booking_day_start;
+    }
+    if ($selected_booking_date === '') {
+        $selected_booking_date = $booking_day_start;
+    }
+    if ($selected_booking_date < $booking_day_start || $selected_booking_date > $booking_day_end) {
+        return new WP_Error('invalid_day', __('Selected date is not available.', 'goody'));
+    }
+    $booking_day_date = $selected_booking_date;
 
     if (empty($items_payload)) {
         return new WP_Error('no_items', __('Please add at least one menu item.', 'goody'));
@@ -1439,7 +1658,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         return new WP_Error('slot_cutoff', __('This slot can no longer be booked.', 'goody'));
     }
 
-    if (goody_is_reservation_slot_reserved($booking_day_id, $slot_time)) {
+    if (goody_is_reservation_slot_reserved($booking_day_id, $slot_time, $booking_day_date)) {
         return new WP_Error('slot_reserved', __('This time slot is already reserved.', 'goody'));
     }
 
@@ -1540,7 +1759,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         ];
     }
 
-    $capacity_usage = goody_get_reservation_capacity_usage($booking_day_id, $slot_time);
+    $capacity_usage = goody_get_reservation_capacity_usage($booking_day_id, $slot_time, $booking_day_date);
     $slot_capacity_persons = max(0, absint($slot_row['capacity_persons'] ?? 0));
     $slot_capacity_kg = max(0, (float) ($slot_row['capacity_kg'] ?? 0));
     if ($slot_capacity_persons > 0 && ($capacity_usage['persons'] + $capacity_persons) > $slot_capacity_persons) {
@@ -1780,16 +1999,57 @@ function goody_create_woocommerce_order_from_reservation($reservation_id, $quote
     }
 
     foreach ($quote['items'] as $item) {
-        $fee_item = new WC_Order_Item_Fee();
-        $fee_item->set_name($item['name'] . ' × ' . rtrim(rtrim(number_format($item['qty'], 2, '.', ''), '0'), '.'));
-        $fee_item->set_amount((float) $item['line_total']);
-        $fee_item->set_total((float) $item['line_total']);
-        $fee_item->set_tax_status('none');
-        $fee_item->add_meta_data(__('Menu item ID', 'goody'), (string) $item['id'], true);
-        if (! empty($item['addons'])) {
-            $fee_item->add_meta_data(__('Add-ons', 'goody'), implode(', ', wp_list_pluck($item['addons'], 'name')), true);
+        $menu_item_id = absint($item['id'] ?? 0);
+        $qty = max(0.01, (float) ($item['qty'] ?? 1));
+        $line_added = false;
+        try {
+            $product_id = goody_sync_menu_item_wc_product($menu_item_id);
+            $product = $product_id > 0 ? wc_get_product($product_id) : null;
+
+            if ($product instanceof WC_Product) {
+                $order_item_id = $order->add_product($product, $qty);
+                if ($order_item_id) {
+                    $order_item = $order->get_item($order_item_id);
+                    if ($order_item instanceof WC_Order_Item_Product) {
+                        $order_item->add_meta_data(__('Menu item ID', 'goody'), (string) $menu_item_id, true);
+                        if (! empty($item['unit_label'])) {
+                            $order_item->add_meta_data(__('Unit', 'goody'), sanitize_text_field((string) $item['unit_label']), true);
+                        }
+                        $order_item->save();
+                    }
+                    $line_added = true;
+                }
+            }
+        } catch (Throwable $e) {
+            $line_added = false;
         }
-        $order->add_item($fee_item);
+
+        if (! $line_added) {
+            $fee_item = new WC_Order_Item_Fee();
+            $fee_item->set_name($item['name'] . ' × ' . rtrim(rtrim(number_format($qty, 2, '.', ''), '0'), '.'));
+            $fee_item->set_amount((float) $item['line_total']);
+            $fee_item->set_total((float) $item['line_total']);
+            $fee_item->set_tax_status('none');
+            $fee_item->add_meta_data(__('Menu item ID', 'goody'), (string) $menu_item_id, true);
+            $order->add_item($fee_item);
+        }
+
+        $addons_total = 0;
+        if (! empty($item['addons']) && is_array($item['addons'])) {
+            foreach ($item['addons'] as $addon) {
+                $addons_total += ((float) ($addon['price'] ?? 0)) * $qty;
+            }
+        }
+        if ($addons_total > 0) {
+            $addons_fee = new WC_Order_Item_Fee();
+            $addons_fee->set_name(sprintf(__('Add-ons for %s', 'goody'), sanitize_text_field((string) $item['name'])));
+            $addons_fee->set_amount((float) $addons_total);
+            $addons_fee->set_total((float) $addons_total);
+            $addons_fee->set_tax_status('none');
+            $addons_fee->add_meta_data(__('Menu item ID', 'goody'), (string) $menu_item_id, true);
+            $addons_fee->add_meta_data(__('Add-ons', 'goody'), implode(', ', wp_list_pluck((array) $item['addons'], 'name')), true);
+            $order->add_item($addons_fee);
+        }
     }
 
     if ($quote['delivery_charge'] > 0) {
@@ -1886,9 +2146,10 @@ function goody_ajax_reservation_slots() {
     $person_need = (float) ($_POST['person_need'] ?? 0);
     $kg_need = (float) ($_POST['kg_need'] ?? 0);
     $selected_time = sanitize_text_field((string) ($_POST['selected_time'] ?? ''));
+    $booking_date = sanitize_text_field((string) ($_POST['booking_date'] ?? ''));
 
     wp_send_json_success([
-        'html' => goody_render_reservation_slot_cards($booking_day_id, $order_type, $selected_time, $person_need, $kg_need),
+        'html' => goody_render_reservation_slot_cards($booking_day_id, $order_type, $selected_time, $person_need, $kg_need, $booking_date),
     ]);
 }
 add_action('wp_ajax_goody_reservation_slots', 'goody_ajax_reservation_slots');
@@ -2420,15 +2681,10 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                         <h3><?php echo esc_html(sprintf('%s 1: %s', goody_get_reservation_step_counter_prefix(), $step_titles[1] ?? __('Date', 'goody'))); ?></h3>
                         <div class="goody-date-grid">
                             <?php foreach ($calendar_days as $day) : ?>
-                                <button type="button" class="goody-date-card<?php echo $day['disabled'] ? ' is-disabled' : ''; ?>" data-booking-day="<?php echo esc_attr((string) $day['id']); ?>" <?php echo $day['disabled'] ? 'disabled' : ''; ?>>
+                                <button type="button" class="goody-date-card<?php echo $day['disabled'] ? ' is-disabled' : ''; ?>" data-booking-day="<?php echo esc_attr((string) $day['id']); ?>" data-booking-date="<?php echo esc_attr((string) $day['date']); ?>" <?php echo $day['disabled'] ? 'disabled' : ''; ?>>
                                     <span class="goody-date-card__day"><?php echo esc_html($day['day']); ?></span>
                                     <strong class="goody-date-card__number"><?php echo esc_html($day['number']); ?></strong>
                                     <small class="goody-date-card__month"><?php echo esc_html($day['month']); ?></small>
-                                    <?php if ($day['note'] !== '') : ?>
-                                        <em class="goody-date-card__note"><?php echo esc_html($day['note']); ?></em>
-                                    <?php elseif ($day['disabled_reason'] !== '') : ?>
-                                        <em class="goody-date-card__note"><?php echo esc_html($day['disabled_reason']); ?></em>
-                                    <?php endif; ?>
                                 </button>
                             <?php endforeach; ?>
                         </div>
@@ -2555,6 +2811,14 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                         <div data-live-summary>
                             <p><?php esc_html_e('Your selected date, menu, slot, and totals will update here.', 'goody'); ?></p>
                         </div>
+                    </div>
+                    <div class="goody-sidebar-card">
+                                                <h4><?php esc_html_e('Booking Note', 'goody'); ?></h4>
+                        <?php if ($day['note'] !== '') : ?>
+                            <em class="goody-date-card__note"><?php echo esc_html($day['note']); ?></em>
+                        <?php elseif ($day['disabled_reason'] !== '') : ?>
+                            <em class="goody-date-card__note"><?php echo esc_html($day['disabled_reason']); ?></em>
+                        <?php endif; ?>
                     </div>
                     <div class="goody-sidebar-card goody-sidebar-card--kitchen">
                         <h4><?php esc_html_e('Kitchen timing', 'goody'); ?></h4>

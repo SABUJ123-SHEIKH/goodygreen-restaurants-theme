@@ -1,5 +1,33 @@
 <?php
 
+function goody_force_classic_checkout_render($content) {
+    if (
+        ! function_exists('is_checkout')
+        || ! is_checkout()
+        || is_order_received_page()
+        || ! in_the_loop()
+        || ! is_main_query()
+    ) {
+        return $content;
+    }
+
+    $post = get_post();
+    if (! ($post instanceof WP_Post)) {
+        return $content;
+    }
+
+    $GLOBALS['goody_force_classic_checkout'] = true;
+    $rendered = do_shortcode('[woocommerce_checkout]');
+    if (function_exists('shortcode_unautop')) {
+        $rendered = shortcode_unautop($rendered);
+    }
+    // Prevent blank gaps caused by auto inserted paragraph and line-break tags.
+    $rendered = preg_replace('#(?:<p>\s*</p>\s*)+#i', '', (string) $rendered);
+    $rendered = preg_replace('#(?:<br\s*/?>\s*)+#i', '', (string) $rendered);
+    return is_string($rendered) ? trim($rendered) : '';
+}
+add_filter('the_content', 'goody_force_classic_checkout_render', 5);
+
 function goody_reservation_post_created_sync_record($reservation_id) {
     if (function_exists('goody_upsert_reservation_record')) {
         goody_upsert_reservation_record($reservation_id);
@@ -25,6 +53,9 @@ function goody_checkout_layout_start() {
     if (! function_exists('is_checkout') || ! is_checkout() || is_order_received_page()) {
         return;
     }
+    if (locate_template('woocommerce/checkout/form-checkout.php', false, false)) {
+        return;
+    }
 
     echo '<div class="goody-checkout-layout">';
 }
@@ -32,6 +63,9 @@ add_action('woocommerce_before_checkout_form', 'goody_checkout_layout_start', 6)
 
 function goody_checkout_layout_end() {
     if (! function_exists('is_checkout') || ! is_checkout() || is_order_received_page()) {
+        return;
+    }
+    if (locate_template('woocommerce/checkout/form-checkout.php', false, false)) {
         return;
     }
 
@@ -115,6 +149,34 @@ function goody_checkout_confirm_button_caption() {
     echo '<p class="goody-checkout-confirm-note">' . esc_html__('Final Confirm Order', 'goody') . '</p>';
 }
 add_action('woocommerce_review_order_before_submit', 'goody_checkout_confirm_button_caption', 15);
+
+function goody_save_checkout_customer_note_to_order($order, $data) {
+    if (! $order instanceof WC_Order) {
+        return;
+    }
+
+    $note = sanitize_textarea_field((string) wp_unslash($_POST['goody_customer_note'] ?? ''));
+    if ($note === '') {
+        return;
+    }
+
+    $order->update_meta_data('_goody_customer_note', $note);
+}
+add_action('woocommerce_checkout_create_order', 'goody_save_checkout_customer_note_to_order', 25, 2);
+
+function goody_show_customer_note_in_admin_order($order) {
+    if (! $order instanceof WC_Order) {
+        return;
+    }
+
+    $note = sanitize_textarea_field((string) $order->get_meta('_goody_customer_note', true));
+    if ($note === '') {
+        return;
+    }
+
+    echo '<p><strong>' . esc_html__('Customer Note:', 'goody') . '</strong><br>' . esc_html($note) . '</p>';
+}
+add_action('woocommerce_admin_order_data_after_billing_address', 'goody_show_customer_note_in_admin_order', 35);
 
 function goody_dashboard_status_badge($status) {
     $status = sanitize_key((string) $status);
