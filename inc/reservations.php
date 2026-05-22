@@ -388,6 +388,23 @@ function goody_get_reservation_customer_field_settings() {
     ];
 }
 
+function goody_get_reservation_delivery_provider_choices() {
+    return [
+        'goody' => 'Goody',
+    ];
+}
+
+function goody_sanitize_reservation_delivery_provider($provider) {
+    if (! is_scalar($provider)) {
+        return '';
+    }
+
+    $provider = sanitize_key((string) $provider);
+    $choices = goody_get_reservation_delivery_provider_choices();
+
+    return isset($choices[$provider]) ? $provider : '';
+}
+
 function goody_register_reservation_post_types() {
     register_post_type('goody_booking_day', [
         'labels' => [
@@ -557,25 +574,6 @@ function goody_render_booking_day_meta_box($post) {
         $slots = [];
     }
     $order_types = goody_get_reservation_order_types();
-    $selected_global_types = [];
-    foreach ($slots as $slot_row) {
-        $raw_types = (string) ($slot_row['order_types'] ?? '');
-        if ($raw_types === '') {
-            $selected_global_types = array_keys($order_types);
-            break;
-        }
-        $slot_types = array_values(array_filter(array_map('sanitize_key', array_map('trim', explode(',', $raw_types)))));
-        if (! empty($slot_types)) {
-            if (empty($selected_global_types)) {
-                $selected_global_types = $slot_types;
-            } else {
-                $selected_global_types = array_values(array_intersect($selected_global_types, $slot_types));
-            }
-        }
-    }
-    if (empty($selected_global_types)) {
-        $selected_global_types = array_keys($order_types);
-    }
     $service_date = (string) get_post_meta($post->ID, 'goody_booking_service_date', true);
     $service_date_from = (string) get_post_meta($post->ID, 'goody_booking_service_date_from', true);
     $service_date_to = (string) get_post_meta($post->ID, 'goody_booking_service_date_to', true);
@@ -605,15 +603,6 @@ function goody_render_booking_day_meta_box($post) {
         <label for="goody_booking_day_note"><strong><?php esc_html_e('Booking Note', 'goody'); ?></strong></label><br>
         <textarea style="width:100%;min-height:88px;" id="goody_booking_day_note" name="goody_booking_day_note"><?php echo esc_textarea((string) get_post_meta($post->ID, 'goody_booking_day_note', true)); ?></textarea>
     </p>
-    <p><strong><?php esc_html_e('Allowed Order Types (apply to all slots)', 'goody'); ?></strong></p>
-    <p>
-        <?php foreach ($order_types as $type_key => $type_label) : ?>
-            <label style="display:inline-flex;align-items:center;margin-right:14px;">
-                <input type="checkbox" name="goody_booking_allowed_types[]" value="<?php echo esc_attr($type_key); ?>" <?php checked(in_array($type_key, $selected_global_types, true)); ?>>
-                <span style="margin-left:4px;"><?php echo esc_html($type_label); ?></span>
-            </label>
-        <?php endforeach; ?>
-    </p>
     <p><strong><?php esc_html_e('Time Slots', 'goody'); ?></strong></p>
     <input type="hidden" class="goody-repeater-input" id="goody_booking_slots" name="goody_booking_slots" value="<?php echo esc_attr($slots_raw); ?>">
     <div class="goody-repeater" data-target="goody_booking_slots" data-columns="<?php echo esc_attr(wp_json_encode([
@@ -627,15 +616,33 @@ function goody_render_booking_day_meta_box($post) {
         ['key' => 'enabled', 'label' => __('Enabled', 'goody'), 'type' => 'checkbox'],
     ])); ?>">
         <?php foreach ($slots as $index => $row) : ?>
+            <?php
+            $row_types_raw = (string) ($row['order_types'] ?? '');
+            $row_types = array_values(array_filter(array_map('sanitize_key', array_map('trim', explode(',', $row_types_raw)))));
+            $row_all_types = empty($row_types);
+            ?>
             <div class="goody-repeater-row" data-index="<?php echo esc_attr((string) $index); ?>">
                 <input type="time" data-field="time" placeholder="<?php esc_attr_e('Time', 'goody'); ?>" value="<?php echo esc_attr((string) ($row['time'] ?? '')); ?>">
                 <input type="text" data-field="label" placeholder="<?php esc_attr_e('Label', 'goody'); ?>" value="<?php echo esc_attr((string) ($row['label'] ?? '')); ?>">
                 <input type="text" data-field="capacity_persons" placeholder="<?php esc_attr_e('Person Cap.', 'goody'); ?>" value="<?php echo esc_attr((string) ($row['capacity_persons'] ?? '')); ?>">
                 <input type="text" data-field="capacity_kg" placeholder="<?php esc_attr_e('KG Cap.', 'goody'); ?>" value="<?php echo esc_attr((string) ($row['capacity_kg'] ?? '')); ?>">
-                <input type="text" data-field="order_types" placeholder="<?php esc_attr_e('dine_in,pickup,delivery', 'goody'); ?>" value="<?php echo esc_attr((string) ($row['order_types'] ?? '')); ?>">
+                <div style="display:flex;flex-wrap:wrap;gap:8px 12px;">
+                    <?php foreach ($order_types as $type_key => $type_label) : ?>
+                        <label style="display:inline-flex;align-items:center;">
+                            <input
+                                type="checkbox"
+                                data-slot-order-type
+                                data-order-type-key="<?php echo esc_attr($type_key); ?>"
+                                <?php checked($row_all_types || in_array($type_key, $row_types, true)); ?>
+                            >
+                            <span style="margin-left:4px;"><?php echo esc_html($type_label); ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <input type="hidden" data-field="order_types" value="<?php echo esc_attr($row_types_raw); ?>">
                 <input type="text" data-field="cutoff_minutes" placeholder="<?php esc_attr_e('120', 'goody'); ?>" value="<?php echo esc_attr((string) ($row['cutoff_minutes'] ?? '')); ?>">
                 <input type="text" data-field="warning" placeholder="<?php esc_attr_e('Optional warning message', 'goody'); ?>" value="<?php echo esc_attr((string) ($row['warning'] ?? '')); ?>">
-                <label class="goody-repeater-checkbox"><input type="checkbox" data-field="enabled" value="1" <?php checked(($row['enabled'] ?? '1'), '1'); ?>> <?php esc_html_e('Enabled', 'goody'); ?></label>
+                <label class="goody-repeater-checkbox"><input type="checkbox" data-field="enabled" value="1" <?php checked(($row['enabled'] ?? '0'), '1'); ?>> <?php esc_html_e('Enabled', 'goody'); ?></label>
                 <button type="button" class="button goody-row-up">↑</button>
                 <button type="button" class="button goody-row-down">↓</button>
                 <button type="button" class="button goody-row-remove"><?php esc_html_e('Remove', 'goody'); ?></button>
@@ -643,7 +650,54 @@ function goody_render_booking_day_meta_box($post) {
         <?php endforeach; ?>
     </div>
     <button type="button" class="button button-secondary goody-repeater-add" data-target="goody_booking_slots"><?php esc_html_e('Add Slot', 'goody'); ?></button>
-    <p class="description"><?php esc_html_e('Allowed Types accepts comma-separated values: dine_in, pickup, delivery. Leave blank for all.', 'goody'); ?></p>
+    <p class="description"><?php esc_html_e('Tick order types per slot. If all are selected, the slot allows all order types.', 'goody'); ?></p>
+    <script>
+    (function () {
+        function syncSlotAllowedTypes(root) {
+            var rows = root.querySelectorAll('.goody-repeater-row');
+            rows.forEach(function (row) {
+                var hiddenField = row.querySelector('input[data-field="order_types"]');
+                if (!hiddenField) {
+                    return;
+                }
+                var checks = Array.prototype.slice.call(row.querySelectorAll('input[data-slot-order-type][data-order-type-key]'));
+                if (!checks.length) {
+                    hiddenField.value = '';
+                    return;
+                }
+                var selected = checks.filter(function (input) {
+                    return !!input.checked;
+                }).map(function (input) {
+                    return String(input.getAttribute('data-order-type-key') || '').trim();
+                }).filter(Boolean);
+                if (selected.length === 0) {
+                    hiddenField.value = '__none__';
+                } else if (selected.length === checks.length) {
+                    hiddenField.value = '';
+                } else {
+                    hiddenField.value = selected.join(',');
+                }
+                hiddenField.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        }
+
+        var wrapper = document.currentScript ? document.currentScript.previousElementSibling : null;
+        while (wrapper && !wrapper.classList.contains('goody-repeater')) {
+            wrapper = wrapper.previousElementSibling;
+        }
+        if (!wrapper) {
+            return;
+        }
+
+        wrapper.addEventListener('change', function (event) {
+            if (event.target && event.target.matches('input[data-slot-order-type]')) {
+                syncSlotAllowedTypes(wrapper);
+            }
+        });
+
+        syncSlotAllowedTypes(wrapper);
+    })();
+    </script>
     <?php
 }
 
@@ -754,7 +808,7 @@ function goody_sanitize_booking_slots_json($raw) {
             'order_types' => sanitize_text_field((string) ($row['order_types'] ?? '')),
             'cutoff_minutes' => (string) max(0, absint($row['cutoff_minutes'] ?? 0)),
             'warning' => sanitize_text_field((string) ($row['warning'] ?? '')),
-            'enabled' => ! isset($row['enabled']) || (string) $row['enabled'] === '1' ? '1' : '0',
+            'enabled' => isset($row['enabled']) && (string) $row['enabled'] === '1' ? '1' : '0',
         ];
     }
 
@@ -808,16 +862,6 @@ function goody_save_reservation_meta_boxes($post_id) {
     }
 
     if ($post_type === 'goody_booking_day') {
-        $allowed_types_input = isset($_POST['goody_booking_allowed_types']) ? (array) wp_unslash($_POST['goody_booking_allowed_types']) : [];
-        $allowed_types = [];
-        foreach ($allowed_types_input as $type_key) {
-            $type_key = sanitize_key((string) $type_key);
-            if (in_array($type_key, ['dine_in', 'pickup', 'delivery'], true)) {
-                $allowed_types[] = $type_key;
-            }
-        }
-        $allowed_types = array_values(array_unique($allowed_types));
-
         $service_date_from = sanitize_text_field((string) ($_POST['goody_booking_service_date'] ?? ''));
         $service_date_to = sanitize_text_field((string) ($_POST['goody_booking_service_date_to'] ?? ''));
         if ($service_date_from !== '') {
@@ -842,22 +886,6 @@ function goody_save_reservation_meta_boxes($post_id) {
         $slots = json_decode(goody_sanitize_booking_slots_json(wp_unslash($_POST['goody_booking_slots'] ?? '[]')), true);
         if (! is_array($slots)) {
             $slots = [];
-        }
-        if (! empty($allowed_types) && count($allowed_types) < 3) {
-            $allowed_types_csv = implode(',', $allowed_types);
-            foreach ($slots as $slot_index => $slot_row) {
-                if (! is_array($slot_row)) {
-                    continue;
-                }
-                $slots[$slot_index]['order_types'] = $allowed_types_csv;
-            }
-        } else {
-            foreach ($slots as $slot_index => $slot_row) {
-                if (! is_array($slot_row)) {
-                    continue;
-                }
-                $slots[$slot_index]['order_types'] = '';
-            }
         }
         $slots_json = wp_json_encode(array_values($slots));
         update_post_meta($post_id, 'goody_booking_slots', $slots_json);
@@ -1095,7 +1123,25 @@ function goody_get_reservation_menu_categories() {
 
 function goody_get_booking_day_slots($booking_day_id) {
     $slots = json_decode((string) get_post_meta($booking_day_id, 'goody_booking_slots', true), true);
-    return is_array($slots) ? array_values($slots) : [];
+    if (! is_array($slots)) {
+        return [];
+    }
+
+    $filtered = [];
+    foreach ($slots as $slot) {
+        if (! is_array($slot)) {
+            continue;
+        }
+
+        // Strictly keep only explicitly enabled slots for frontend/runtime safety.
+        if (! isset($slot['enabled']) || (string) $slot['enabled'] !== '1') {
+            continue;
+        }
+
+        $filtered[] = $slot;
+    }
+
+    return array_values($filtered);
 }
 
 function goody_get_available_booking_days() {
@@ -1456,8 +1502,14 @@ function goody_render_reservation_slot_cards($booking_day_id, $order_type = '', 
         }
 
         $allowed_types = array_values(array_filter(array_map('sanitize_key', array_map('trim', explode(',', (string) ($slot['order_types'] ?? ''))))));
+        if (in_array('__none__', $allowed_types, true)) {
+            continue;
+        }
         $matches_order_type = empty($allowed_types) || $order_type === '' || in_array($order_type, $allowed_types, true);
         $is_enabled = ! isset($slot['enabled']) || (string) $slot['enabled'] === '1';
+        if (! $is_enabled) {
+            continue;
+        }
         $capacity_persons = max(0, absint($slot['capacity_persons'] ?? 0));
         $capacity_kg = max(0, (float) ($slot['capacity_kg'] ?? 0));
         $usage = goody_get_reservation_capacity_usage($booking_day_id, $time, $service_date);
@@ -1469,10 +1521,14 @@ function goody_render_reservation_slot_cards($booking_day_id, $order_type = '', 
         $fits_persons = $capacity_persons <= 0 || $selected_person_need <= $remaining_persons;
         $fits_kg = $capacity_kg <= 0 || $selected_kg_need <= $remaining_kg;
         $slot_reserved = goody_is_reservation_slot_reserved($booking_day_id, $time, $service_date);
-        $is_disabled = ! $is_enabled || ! $matches_order_type || $cutoff_passed || $slot_reserved || ! $fits_persons || ! $fits_kg;
+        $is_disabled = ! $matches_order_type || $cutoff_passed || $slot_reserved || ! $fits_persons || ! $fits_kg;
         $selected_class = $selected_time === $time ? ' is-selected' : '';
 
         echo '<button type="button" class="goody-slot-card' . esc_attr($selected_class) . '" data-slot="' . esc_attr($time) . '"';
+        $allowed_types_for_ui = array_values(array_intersect($allowed_types, ['dine_in', 'pickup', 'delivery']));
+        if (! empty($allowed_types_for_ui)) {
+            echo ' data-slot-types="' . esc_attr(implode(',', $allowed_types_for_ui)) . '"';
+        }
         echo $is_disabled ? ' disabled' : '';
         echo '>';
         echo '<span class="goody-slot-card__time">' . esc_html($label) . '</span>';
@@ -1496,9 +1552,7 @@ function goody_render_reservation_slot_cards($booking_day_id, $order_type = '', 
             echo '<span class="goody-slot-card__meta">' . esc_html(implode(' • ', $meta)) . '</span>';
         }
 
-        if (! $is_enabled) {
-            echo '<span class="goody-slot-card__state">' . esc_html__('Disabled by admin', 'goody') . '</span>';
-        } elseif ($cutoff_passed) {
+        if ($cutoff_passed) {
             echo '<span class="goody-slot-card__state">' . esc_html__('Cut-off passed', 'goody') . '</span>';
         } elseif ($slot_reserved) {
             echo '<span class="goody-slot-card__state">' . esc_html__('Already reserved', 'goody') . '</span>';
@@ -1557,9 +1611,11 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
     $slot_time = sanitize_text_field((string) ($payload['slot_time'] ?? ''));
     $order_type = sanitize_key((string) ($payload['order_type'] ?? ''));
     $payment_mode = sanitize_key((string) ($payload['payment_mode'] ?? 'full'));
-    $delivery_provider = goody_sanitize_delivery_provider($payload['delivery_provider'] ?? '');
+    $delivery_provider = goody_sanitize_reservation_delivery_provider($payload['delivery_provider'] ?? '');
+    if ($delivery_provider === '') {
+        $delivery_provider = 'goody';
+    }
     $guests = max(1, absint($payload['guests'] ?? 1));
-    $zone_id = absint($payload['delivery_zone_id'] ?? 0);
     $items_payload = goody_normalize_reservation_item_payload($payload['items'] ?? []);
     $customer = is_array($payload['customer'] ?? null) ? $payload['customer'] : [];
     $notes = sanitize_textarea_field((string) ($customer['note'] ?? ''));
@@ -1650,6 +1706,9 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
     }
 
     $allowed_types = array_values(array_filter(array_map('sanitize_key', array_map('trim', explode(',', (string) ($slot_row['order_types'] ?? ''))))));
+    if (in_array('__none__', $allowed_types, true)) {
+        return new WP_Error('invalid_slot_type', __('This slot is not available for the selected order type.', 'goody'));
+    }
     if (! empty($allowed_types) && ! in_array($order_type, $allowed_types, true)) {
         return new WP_Error('invalid_slot_type', __('This slot is not available for the selected order type.', 'goody'));
     }
@@ -1769,36 +1828,13 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         return new WP_Error('slot_capacity_kg', __('Not enough KG capacity left in this slot.', 'goody'));
     }
 
-    $delivery_zone = null;
     $delivery_charge = 0;
     if ($order_type === 'delivery') {
         if ($delivery_provider === '') {
             return new WP_Error('delivery_provider_missing', __('Please choose a delivery provider.', 'goody'));
         }
-
-        $delivery_zone = goody_get_delivery_zone_by_id($zone_id);
-        if (! $delivery_zone) {
-            return new WP_Error('delivery_zone_missing', __('Please choose a delivery zone.', 'goody'));
-        }
     } else {
         $delivery_provider = '';
-    }
-
-    if ($order_type === 'delivery') {
-        if ($delivery_zone['min_order'] > 0 && $subtotal < $delivery_zone['min_order']) {
-            return new WP_Error('delivery_minimum', sprintf(
-                /* translators: %s is the minimum delivery order amount. */
-                __('Minimum order for this zone is %s.', 'goody'),
-                goody_reservation_price_plain($delivery_zone['min_order'])
-            ));
-        }
-
-        $free_limit = $delivery_zone['free_limit'] > 0 ? $delivery_zone['free_limit'] : goody_get_reservation_free_delivery_threshold();
-        if ($free_limit > 0 && $subtotal >= $free_limit) {
-            $delivery_charge = 0;
-        } else {
-            $delivery_charge = (float) $delivery_zone['charge'];
-        }
     }
 
     $type_minimums = [
@@ -1869,7 +1905,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         'payment_mode' => $payment_mode,
         'payment_mode_label' => $payment_modes[$payment_mode] ?? $payment_modes['full'],
         'delivery_provider' => $delivery_provider,
-        'delivery_provider_label' => goody_get_delivery_provider_label($delivery_provider),
+        'delivery_provider_label' => goody_get_reservation_delivery_provider_choices()[$delivery_provider] ?? 'Goody',
         'guests' => $guests,
         'items' => $items,
         'subtotal' => $subtotal,
@@ -1877,7 +1913,6 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         'grand_total' => $grand_total,
         'pay_now_total' => $pay_now_total,
         'balance_due' => $balance_due,
-        'delivery_zone' => $delivery_zone,
         'capacity_persons' => $capacity_persons,
         'capacity_kg' => $capacity_kg,
         'customer' => [
@@ -1976,11 +2011,6 @@ function goody_create_reservation_post($quote) {
     update_post_meta($reservation_id, 'goody_reservation_balance_due', (string) $quote['balance_due']);
     update_post_meta($reservation_id, 'goody_reservation_items_json', wp_json_encode($quote['items']));
     update_post_meta($reservation_id, 'goody_reservation_summary_html', goody_render_reservation_summary_html($quote));
-    if (! empty($quote['delivery_zone']['id'])) {
-        update_post_meta($reservation_id, 'goody_delivery_zone_id', (string) $quote['delivery_zone']['id']);
-        update_post_meta($reservation_id, 'goody_delivery_zone_name', sanitize_text_field((string) $quote['delivery_zone']['name']));
-    }
-
     if (function_exists('goody_reservation_post_created_sync_record')) {
         goody_reservation_post_created_sync_record($reservation_id);
     }
@@ -1989,6 +2019,7 @@ function goody_create_reservation_post($quote) {
 }
 
 function goody_create_woocommerce_order_from_reservation($reservation_id, $quote) {
+    $reservation_id = absint($reservation_id);
     if (! function_exists('wc_create_order') || ! class_exists('WC_Order_Item_Fee')) {
         return new WP_Error('woocommerce_missing', __('WooCommerce is required for payment processing.', 'goody'));
     }
@@ -2088,8 +2119,10 @@ function goody_create_woocommerce_order_from_reservation($reservation_id, $quote
     $order->set_shipping_phone(sanitize_text_field((string) ($quote['customer']['phone'] ?? '')));
     $order->set_shipping_address_1(sanitize_text_field((string) ($quote['customer']['address'] ?? '')));
 
-    $order->update_meta_data('_goody_reservation_id', $reservation_id);
-    $order->update_meta_data('_goody_reservation_code', goody_get_reservation_reference($reservation_id));
+    if ($reservation_id > 0) {
+        $order->update_meta_data('_goody_reservation_id', $reservation_id);
+        $order->update_meta_data('_goody_reservation_code', goody_get_reservation_reference($reservation_id));
+    }
     $order->update_meta_data('_goody_reservation_date', $quote['booking_date']);
     $order->update_meta_data('_goody_reservation_slot', $quote['slot_label']);
     $order->update_meta_data('_goody_reservation_order_type', $quote['order_type']);
@@ -2113,14 +2146,62 @@ function goody_create_woocommerce_order_from_reservation($reservation_id, $quote
 
     $order->save();
 
-    update_post_meta($reservation_id, 'goody_wc_order_id', (string) $order->get_id());
+    if ($reservation_id > 0) {
+        update_post_meta($reservation_id, 'goody_wc_order_id', (string) $order->get_id());
+        update_post_meta($reservation_id, 'goody_reservation_payment_status', sanitize_text_field((string) $order->get_status()));
+        if (function_exists('goody_upsert_reservation_record')) {
+            goody_upsert_reservation_record($reservation_id);
+        }
+    }
+
+    return $order;
+}
+
+function goody_maybe_create_reservation_after_payment($order_id) {
+    $order_id = absint($order_id);
+    if ($order_id < 1 || ! function_exists('wc_get_order')) {
+        return;
+    }
+
+    $order = wc_get_order($order_id);
+    if (! $order instanceof WC_Order) {
+        return;
+    }
+
+    $existing_reservation_id = absint($order->get_meta('_goody_reservation_id', true));
+    if ($existing_reservation_id > 0) {
+        return;
+    }
+
+    $raw_quote = (string) $order->get_meta('_goody_pending_reservation_quote', true);
+    if ($raw_quote === '') {
+        return;
+    }
+
+    $quote = json_decode($raw_quote, true);
+    if (! is_array($quote)) {
+        return;
+    }
+
+    $reservation_id = goody_create_reservation_post($quote);
+    if (is_wp_error($reservation_id)) {
+        return;
+    }
+
+    update_post_meta($reservation_id, 'goody_wc_order_id', (string) $order_id);
     update_post_meta($reservation_id, 'goody_reservation_payment_status', sanitize_text_field((string) $order->get_status()));
     if (function_exists('goody_upsert_reservation_record')) {
         goody_upsert_reservation_record($reservation_id);
     }
 
-    return $order;
+    $order->update_meta_data('_goody_reservation_id', $reservation_id);
+    $order->update_meta_data('_goody_reservation_code', goody_get_reservation_reference($reservation_id));
+    $order->delete_meta_data('_goody_pending_reservation_quote');
+    $order->save();
 }
+add_action('woocommerce_payment_complete', 'goody_maybe_create_reservation_after_payment', 20);
+add_action('woocommerce_order_status_processing', 'goody_maybe_create_reservation_after_payment', 20);
+add_action('woocommerce_order_status_completed', 'goody_maybe_create_reservation_after_payment', 20);
 
 function goody_get_reservation_redirect_url($reservation_id, $order = null) {
     $reservation_id = absint($reservation_id);
@@ -2189,30 +2270,61 @@ function goody_ajax_reservation_submit() {
         ], 422);
     }
 
-    $reservation_id = goody_create_reservation_post($quote);
-    if (is_wp_error($reservation_id)) {
+    $should_create_wc_order = class_exists('WooCommerce') && goody_get_option('reservation_auto_create_wc_order', '1') === '1';
+    $payment_mode = sanitize_key((string) ($quote['payment_mode'] ?? 'full'));
+
+    // Cash mode: create reservation immediately (existing behavior).
+    if ($payment_mode === 'cash') {
+        $reservation_id = goody_create_reservation_post($quote);
+        if (is_wp_error($reservation_id)) {
+            wp_send_json_error([
+                'message' => $reservation_id->get_error_message(),
+            ], 500);
+        }
+
+        $order = null;
+        if ($should_create_wc_order) {
+            $order = goody_create_woocommerce_order_from_reservation($reservation_id, $quote);
+            if (is_wp_error($order)) {
+                wp_trash_post($reservation_id);
+                wp_send_json_error([
+                    'message' => $order->get_error_message(),
+                ], 500);
+            }
+        }
+
+        wp_send_json_success([
+            'reservation_id' => $reservation_id,
+            'reference' => goody_get_reservation_reference($reservation_id),
+            'redirect_url' => goody_get_reservation_redirect_url($reservation_id, $order instanceof WC_Order ? $order : null),
+            'message' => goody_get_option('reservation_success_message', __('Reservation created successfully.', 'goody')),
+        ]);
+    }
+
+    // Full/advance: require payment-first flow.
+    if (! $should_create_wc_order) {
         wp_send_json_error([
-            'message' => $reservation_id->get_error_message(),
+            'message' => __('Online payment is currently unavailable. Please use cash payment or contact support.', 'goody'),
+        ], 422);
+    }
+
+    $order = goody_create_woocommerce_order_from_reservation(0, $quote);
+    if (is_wp_error($order)) {
+        wp_send_json_error([
+            'message' => $order->get_error_message(),
         ], 500);
     }
 
-    $order = null;
-    $should_create_wc_order = class_exists('WooCommerce') && goody_get_option('reservation_auto_create_wc_order', '1') === '1';
-    if ($should_create_wc_order) {
-        $order = goody_create_woocommerce_order_from_reservation($reservation_id, $quote);
-        if (is_wp_error($order)) {
-            wp_trash_post($reservation_id);
-            wp_send_json_error([
-                'message' => $order->get_error_message(),
-            ], 500);
-        }
+    if ($order instanceof WC_Order) {
+        $order->update_meta_data('_goody_pending_reservation_quote', wp_json_encode($quote));
+        $order->save();
     }
 
     wp_send_json_success([
-        'reservation_id' => $reservation_id,
-        'reference' => goody_get_reservation_reference($reservation_id),
-        'redirect_url' => goody_get_reservation_redirect_url($reservation_id, $order instanceof WC_Order ? $order : null),
-        'message' => goody_get_option('reservation_success_message', __('Reservation created successfully.', 'goody')),
+        'reservation_id' => 0,
+        'reference' => '',
+        'redirect_url' => goody_get_reservation_redirect_url(0, $order instanceof WC_Order ? $order : null),
+        'message' => __('Proceed to payment to confirm your reservation.', 'goody'),
     ]);
 }
 add_action('wp_ajax_goody_reservation_submit', 'goody_ajax_reservation_submit');
@@ -2450,10 +2562,10 @@ function goody_build_reservation_frontend_config() {
         'calendarDays' => goody_get_reservation_calendar_days(),
         'menuItems' => goody_get_reservable_menu_items(),
         'categories' => goody_get_reservation_menu_categories(),
-        'zones' => goody_get_delivery_zones(),
+        'zones' => [],
         'orderTypes' => $order_types,
         'paymentModes' => $payment_modes,
-        'deliveryProviders' => goody_get_delivery_provider_choices(),
+        'deliveryProviders' => goody_get_reservation_delivery_provider_choices(),
         'steps' => array_values(goody_get_reservation_step_titles()),
         'fieldSettings' => goody_get_reservation_customer_field_settings(),
         'texts' => [
@@ -2473,7 +2585,6 @@ function goody_build_reservation_frontend_config() {
             'missingSlot' => __('Please choose a time slot.', 'goody'),
             'missingOrderType' => __('Please choose an order type.', 'goody'),
             'missingPaymentMode' => __('Please choose a payment option.', 'goody'),
-            'missingZone' => __('Please choose a delivery zone.', 'goody'),
             'missingDeliveryProvider' => __('Please choose a delivery provider.', 'goody'),
             'missingName' => __('Please enter your name.', 'goody'),
             'missingPhone' => __('Please enter your phone number.', 'goody'),
@@ -2491,6 +2602,7 @@ function goody_build_reservation_frontend_config() {
         ],
         'settings' => [
             'depositPercentage' => goody_get_reservation_deposit_percentage(),
+            'defaultDeliveryProvider' => 'goody',
         ],
         'todayHours' => [
             'day' => $today_hours['day'] ?? '',
@@ -2551,7 +2663,7 @@ function goody_render_reservation_menu_cards($menu_items, $categories = [], $sho
                     <div class="goody-booking-card__body">
                         <div class="goody-booking-card__head">
                             <div>
-                                <h4><a href="<?php echo get_the_permalink(); ?>"><?php echo esc_html($item['name']); ?></a></h4>
+                                <h4><a href="<?php echo esc_url(get_permalink((int) $item['id'])); ?>"><?php echo esc_html($item['name']); ?></a></h4>
                                 <?php if (! goody_is_bengali_context() && $item['bn_name'] !== '') : ?>
                                     <p class="goody-booking-card__subhead"><?php echo esc_html($item['bn_name']); ?></p>
                                 <?php endif; ?>
@@ -2624,6 +2736,54 @@ function goody_render_reservation_menu_cards($menu_items, $categories = [], $sho
     <?php
 
     return ob_get_clean();
+}
+
+function goody_get_reservation_choice_icon_svg($group, $key) {
+    $group = sanitize_key((string) $group);
+    $key = sanitize_key((string) $key);
+
+    $icons = [
+        'order_type' => [
+            'dine_in' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v7a3 3 0 0 0 3 3h1v6h2V4H8v5H7V4H5v5H4V4Zm8 2h7v2h-1v12h-2V8h-2v12h-2V6Z"/></svg>',
+            'pickup' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h15a3 3 0 0 1 3 3v4h-2v-1H5v1H3V7Zm2 4h14v-1a1 1 0 0 0-1-1H5v2Zm2 4h2a2 2 0 1 0 4 0h4a2 2 0 1 0 4 0h1v2h-1a4 4 0 0 1-8 0H13a4 4 0 0 1-8 0H3v-2h2a2 2 0 0 0 2 2Z"/></svg>',
+            'delivery' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h11v8h2.5l2.2-3H21v5h-1a3 3 0 0 1-6 0H9a3 3 0 0 1-6 0H2V6Zm2 8h1a3 3 0 0 1 6 0h.5V8H4v6Zm13.7-1 1.1-1.5H15v1.5h2.7ZM6 19a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm11 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/></svg>',
+        ],
+        'payment_mode' => [
+            'full' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Zm2 0v2h14V6H5Zm0 4v8h14v-8H5Zm2 2h5v2H7v-2Z"/></svg>',
+            'advance' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V6l-9-4Zm0 3.2 6 2.7V12c0 3.8-2.6 7.5-6 8.6-3.4-1.1-6-4.8-6-8.6V7.9l6-2.7Zm-1 3.8h2v3h3v2h-5V9Z"/></svg>',
+            'cash' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7Zm3-1a1 1 0 0 0-1 1v1h16V7a1 1 0 0 0-1-1H5Zm-1 4v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7H4Zm8 1a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>',
+        ],
+    ];
+
+    return (string) ($icons[$group][$key] ?? '');
+}
+
+function goody_render_reservation_choice_label_with_icon($label, $group, $key) {
+    $label = sanitize_text_field((string) $label);
+    $svg = goody_get_reservation_choice_icon_svg($group, $key);
+    $svg_html = '';
+    if ($svg !== '') {
+        $svg_html = wp_kses(
+            $svg,
+            [
+                'svg' => [
+                    'viewBox' => true,
+                    'aria-hidden' => true,
+                    'focusable' => true,
+                    'class' => true,
+                ],
+                'path' => [
+                    'd' => true,
+                    'fill' => true,
+                ],
+            ]
+        );
+    }
+
+    return '<span class="goody-choice-card__content">' .
+        ($svg_html !== '' ? '<span class="goody-choice-card__icon">' . $svg_html . '</span>' : '') .
+        '<span class="goody-choice-card__label">' . esc_html($label) . '</span>' .
+    '</span>';
 }
 
 function goody_render_reservation_booking_shortcode($atts = []) {
@@ -2720,24 +2880,13 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                         <h3><?php echo esc_html(sprintf('%s 4: %s', goody_get_reservation_step_counter_prefix(), $step_titles[4] ?? __('Order Type', 'goody'))); ?></h3>
                         <div class="goody-choice-grid">
                             <?php foreach ($order_types as $type_key => $type_label) : ?>
-                                <button type="button" class="goody-choice-card" data-order-type="<?php echo esc_attr($type_key); ?>"><?php echo esc_html($type_label); ?></button>
+                                <button type="button" class="goody-choice-card" data-order-type="<?php echo esc_attr($type_key); ?>"><?php echo goody_render_reservation_choice_label_with_icon($type_label, 'order_type', $type_key); ?></button>
                             <?php endforeach; ?>
                         </div>
                         <div class="goody-order-notices">
                             <div class="goody-notice" data-order-warning="dine_in" hidden><?php echo esc_html($default_dine_in_note); ?></div>
                             <div class="goody-notice" data-order-warning="pickup" hidden><?php echo esc_html($default_pickup_warning); ?></div>
                             <div class="goody-notice" data-order-warning="delivery" hidden><?php echo esc_html($default_delivery_warning); ?></div>
-                        </div>
-
-                        <div class="goody-zone-wrap" data-zone-wrap hidden>
-                            <label for="goody-delivery-zone"><strong><?php esc_html_e('Delivery zone', 'goody'); ?></strong></label>
-                            <select id="goody-delivery-zone" data-delivery-zone>
-                                <option value=""><?php esc_html_e('Choose area', 'goody'); ?></option>
-                                <?php foreach ($config['zones'] as $zone) : ?>
-                                    <option value="<?php echo esc_attr((string) $zone['id']); ?>"><?php echo esc_html($zone['name']); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <p class="description" data-zone-warning></p>
                         </div>
 
                         <div class="goody-delivery-provider-wrap" data-delivery-provider-wrap hidden>
@@ -2752,7 +2901,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
 
                         <div class="goody-payment-modes">
                             <?php foreach ($payment_modes as $payment_key => $payment_label) : ?>
-                                <button type="button" class="goody-choice-card goody-choice-card--payment" data-payment-mode="<?php echo esc_attr($payment_key); ?>"><?php echo esc_html($payment_label); ?></button>
+                                <button type="button" class="goody-choice-card goody-choice-card--payment" data-payment-mode="<?php echo esc_attr($payment_key); ?>"><?php echo goody_render_reservation_choice_label_with_icon($payment_label, 'payment_mode', $payment_key); ?></button>
                             <?php endforeach; ?>
                         </div>
                         <div class="goody-notice" data-payment-warning hidden><?php echo esc_html($default_cash_warning); ?></div>

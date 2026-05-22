@@ -390,19 +390,56 @@ background: var(--goody-reservation-accent);
 }
 
 .goody-choice-card {
-  min-height: 92px;
+  min-height: 44px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
+  justify-content: left;
+  text-align: left;
   font-weight: 800;
   color: var(--goody-reservation-text);
+}
+
+.goody-choice-card__content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  line-height: 1.2;
+}
+
+.goody-choice-card__icon {
+    width: 1.5rem;
+    height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--goody-reservation-button) 72%, var(--goody-reservation-text) 28%);
+}
+
+.goody-choice-card__icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: currentColor;
+}
+
+.goody-choice-card__label {
+  display: inline-block;
 }
 
 .goody-choice-card.is-selected {
   background: var(--goody-reservation-button);
   border-color: var(--goody-reservation-button);
   color: var(--goody-reservation-button-text);
+}
+
+.goody-choice-card.is-selected .goody-choice-card__icon {
+  color: var(--goody-reservation-button-text);
+}
+
+/* Force-hide filtered order-type buttons even if other theme rules set display. */
+[data-order-type][hidden] {
+  display: none !important;
 }
 
 .goody-slot-card {
@@ -709,6 +746,7 @@ background: var(--goody-reservation-accent);
 .goody-notice,
 .goody-inline-empty {
   margin-top: 1rem;
+  margin-bottom: 15px;
   padding: 0.95rem 1rem;
   border-radius: 18px;
   background: var(--goody-reservation-accent-soft);
@@ -775,7 +813,7 @@ background: var(--goody-reservation-accent);
 
 .goody-reservation-shell .goody-sidebar-card {
   background: var(--card-color) !important;
-  border-radius: var(--reservation-card-radius, 28px);
+  border-radius: 8px;
   padding: 1.15rem;
 }
 

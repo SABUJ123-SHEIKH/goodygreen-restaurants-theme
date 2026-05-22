@@ -177,7 +177,7 @@ if (is_user_logged_in() && function_exists('wc_get_orders')) {
                                         $order_provider = sanitize_text_field((string) $customer_order->get_meta('delivery_provider', true));
                                     }
                                     if ($order_provider === '') {
-                                        $order_provider = __('WooCommerce', 'goody');
+                                        $order_provider = __('Goody', 'goody');
                                     }
                                     ?>
                                     <tr>

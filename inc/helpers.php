@@ -4169,7 +4169,7 @@ function goody_get_woocommerce_tracking_state($order_id_override = '', $order_ke
         $state['provider'] = sanitize_text_field((string) $order->get_meta('_tracking_provider', true));
     }
     if ($state['provider'] === '') {
-        $state['provider'] = 'WooCommerce';
+        $state['provider'] = 'Goody';
     }
 
     $shipping_name = trim((string) $order->get_formatted_shipping_full_name());

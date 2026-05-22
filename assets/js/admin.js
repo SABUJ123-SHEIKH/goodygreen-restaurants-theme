@@ -266,14 +266,40 @@ jQuery(function ($) {
     target.val(JSON.stringify(rows));
   }
 
-  function renderRepeaterRow(columns) {
+  function renderBookingSlotOrderTypeChecks() {
+    const types = [
+      { key: 'dine_in', label: 'Dine In' },
+      { key: 'pickup', label: 'Pickup' },
+      { key: 'delivery', label: 'Delivery' }
+    ];
+
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:8px 12px;">' +
+      types.map(function (type) {
+        return '<label style="display:inline-flex;align-items:center;">' +
+          '<input type="checkbox" data-slot-order-type data-order-type-key="' + type.key + '" checked>' +
+          '<span style="margin-left:4px;">' + type.label + '</span>' +
+        '</label>';
+      }).join('') +
+      '</div>' +
+      '<input type="hidden" data-field="order_types" value="">'
+    );
+  }
+
+  function renderRepeaterRow(columns, target) {
     let html = '<div class="goody-repeater-row">';
 
     columns.forEach(function (column) {
+      if (target === 'goody_booking_slots' && column.key === 'order_types') {
+        html += renderBookingSlotOrderTypeChecks();
+        return;
+      }
+
       let type = 'text';
       if (column.type === 'time') type = 'time';
       if (column.type === 'checkbox') {
-        html += '<label class="goody-repeater-checkbox"><input type="checkbox" data-field="' + column.key + '" value="1" checked> ' + column.label + '</label>';
+        const checkedAttr = column.key === 'enabled' ? '' : ' checked';
+        html += '<label class="goody-repeater-checkbox"><input type="checkbox" data-field="' + column.key + '" value="1"' + checkedAttr + '> ' + column.label + '</label>';
         return;
       }
 
@@ -293,7 +319,7 @@ jQuery(function ($) {
     const repeater = $('.goody-repeater[data-target="' + target + '"]');
     const columns = JSON.parse(repeater.attr('data-columns') || '[]');
 
-    repeater.append(renderRepeaterRow(columns));
+    repeater.append(renderRepeaterRow(columns, String(target || '')));
     updateRepeaterValue(repeater);
   });
 

@@ -7,7 +7,8 @@ function goody_register_theme_menu() {
         'edit_theme_options',
         'goody-theme',
         'goody_render_theme_options_page',
-        'dashicons-store'
+        'dashicons-store',
+        2
     );
 }
 add_action('admin_menu', 'goody_register_theme_menu');
@@ -32,6 +33,31 @@ function goody_register_theme_submenus() {
     );
 }
 add_action('admin_menu', 'goody_register_theme_submenus');
+
+function goody_ensure_theme_settings_first_submenu() {
+    global $submenu;
+
+    if (! isset($submenu['goody-theme']) || ! is_array($submenu['goody-theme'])) {
+        return;
+    }
+
+    $theme_settings_key = null;
+    foreach ($submenu['goody-theme'] as $index => $item) {
+        if (! empty($item[2]) && $item[2] === 'goody-theme') {
+            $theme_settings_key = $index;
+            break;
+        }
+    }
+
+    if ($theme_settings_key === null || $theme_settings_key === 0) {
+        return;
+    }
+
+    $theme_settings_item = $submenu['goody-theme'][$theme_settings_key];
+    unset($submenu['goody-theme'][$theme_settings_key]);
+    array_unshift($submenu['goody-theme'], $theme_settings_item);
+}
+add_action('admin_menu', 'goody_ensure_theme_settings_first_submenu', 999);
 
 function goody_get_settings_sections() {
     return [
@@ -236,6 +262,18 @@ function goody_get_settings_fields() {
             ['key' => 'deliveroo_api_url', 'label' => __('Deliveroo API Endpoint URL', 'goody'), 'type' => 'url'],
             ['key' => 'deliveroo_api_token', 'label' => __('Deliveroo API Token / Key', 'goody'), 'type' => 'text'],
             ['key' => 'delivery_auto_create_enabled', 'label' => __('Auto Create Delivery Order After WooCommerce Order', 'goody'), 'type' => 'checkbox'],
+            [
+                'key' => 'reservation_delivery_providers',
+                'label' => __('WooCommerce Delivery Providers (Custom)', 'goody'),
+                'type' => 'textarea',
+                'description' => __('WooCommerce provider list only. One provider per line using key|Label. Example: goody|Goody', 'goody'),
+            ],
+            [
+                'key' => 'reservation_default_delivery_provider',
+                'label' => __('WooCommerce Default Delivery Provider Key', 'goody'),
+                'type' => 'text',
+                'description' => __('WooCommerce only. Must match one provider key from the custom list. Example: goody', 'goody'),
+            ],
             [
                 'key' => 'delivery_auto_provider',
                 'label' => __('Auto Delivery Provider', 'goody'),

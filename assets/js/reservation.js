@@ -165,7 +165,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var config = parseJsonConfig(app.querySelector('.goody-reservation-config'));
     var dates = toArray(config.dates);
     var menuItems = toArray(config.menuItems);
-    var zones = toArray(config.zones);
     var stepTitles = toArray(config.steps);
     var texts = config.texts || {};
     var orderTypes = config.orderTypes || {};
@@ -178,11 +177,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var liveSummary = app.querySelector('[data-live-summary]');
     var finalSummary = app.querySelector('[data-final-summary]');
     var addressWrap = app.querySelector('[data-address-wrap]');
-    var zoneWrap = app.querySelector('[data-zone-wrap]');
-    var zoneSelect = app.querySelector('[data-delivery-zone]');
     var providerWrap = app.querySelector('[data-delivery-provider-wrap]');
     var providerSelect = app.querySelector('[data-delivery-provider]');
-    var zoneWarning = app.querySelector('[data-zone-warning]');
     var paymentWarning = app.querySelector('[data-payment-warning]');
     var finalMessage = app.querySelector('[data-final-message]');
     var itemCards = Array.prototype.slice.call(app.querySelectorAll('[data-menu-item-id]'));
@@ -199,7 +195,6 @@ document.addEventListener('DOMContentLoaded', function () {
       slotTime: '',
       orderType: orderTypeKeys[0] || 'dine_in',
       paymentMode: paymentModeKeys[0] || 'full',
-      deliveryZoneId: '',
       deliveryProvider: '',
       guests: 1,
       customer: {
@@ -219,12 +214,6 @@ document.addEventListener('DOMContentLoaded', function () {
     function getDateBySelection(id, dateValue) {
       return dates.find(function (date) {
         return String(date.id) === String(id) && String(date.date || '') === String(dateValue || '');
-      }) || null;
-    }
-
-    function getZoneById(id) {
-      return zones.find(function (zone) {
-        return String(zone.id) === String(id);
       }) || null;
     }
 
@@ -288,21 +277,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
       });
 
-      var delivery = 0;
-      if (state.orderType === 'delivery') {
-        var zone = getZoneById(state.deliveryZoneId);
-        if (zone) {
-          var freeLimit = toNumber(zone.free_limit, 0);
-          if (!(freeLimit > 0 && subtotal >= freeLimit)) {
-            delivery = toNumber(zone.charge, 0);
-          }
-        }
-      }
-
       return {
         subtotal: subtotal,
-        delivery: delivery,
-        total: subtotal + delivery
+        delivery: 0,
+        total: subtotal
       };
     }
 
@@ -318,7 +296,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
       var lines = [];
       var date = getDateBySelection(state.bookingDayId, state.bookingDate);
-      var zone = getZoneById(state.deliveryZoneId);
       var totals = calculateLocalTotals();
 
       if (date) {
@@ -335,10 +312,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
       if (state.paymentMode) {
         lines.push('<p><strong>' + getText('labelPayment', 'Payment') + ':</strong> ' + (paymentModes[state.paymentMode] || state.paymentMode) + '</p>');
-      }
-
-      if (state.orderType === 'delivery' && zone) {
-        lines.push('<p><strong>Zone:</strong> ' + zone.name + '</p>');
       }
 
       if (state.orderType === 'delivery' && state.deliveryProvider) {
@@ -360,6 +333,50 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       liveSummary.innerHTML = lines.join('');
+    }
+
+    function getSelectedSlotButton() {
+      if (!slotResults || !state.slotTime) {
+        return null;
+      }
+      return slotResults.querySelector('[data-slot="' + state.slotTime + '"]');
+    }
+
+    function getSlotAllowedTypes() {
+      var slotButton = getSelectedSlotButton();
+      if (!slotButton) {
+        return [];
+      }
+
+      var raw = String(slotButton.getAttribute('data-slot-types') || '').trim();
+      if (!raw) {
+        return [];
+      }
+
+      return raw.split(',').map(function (value) {
+        return String(value || '').trim();
+      }).filter(Boolean);
+    }
+
+    function syncOrderTypesBySelectedSlot() {
+      var allowedTypes = getSlotAllowedTypes();
+      var allowedSet = {};
+      var hasRestriction = allowedTypes.length > 0;
+      allowedTypes.forEach(function (typeKey) {
+        allowedSet[typeKey] = true;
+      });
+
+      var orderTypeButtons = Array.prototype.slice.call(app.querySelectorAll('[data-order-type]'));
+      orderTypeButtons.forEach(function (button) {
+        var typeKey = String(button.getAttribute('data-order-type') || '');
+        var isAllowed = !hasRestriction || !!allowedSet[typeKey];
+        button.hidden = !isAllowed;
+        button.disabled = !isAllowed;
+      });
+
+      if (hasRestriction && !allowedSet[state.orderType]) {
+        state.orderType = allowedTypes[0] || '';
+      }
     }
 
     function setStep(step) {
@@ -420,10 +437,6 @@ document.addEventListener('DOMContentLoaded', function () {
         addressWrap.hidden = state.orderType !== 'delivery';
       }
 
-      if (zoneWrap) {
-        zoneWrap.hidden = state.orderType !== 'delivery';
-      }
-
       if (providerWrap) {
         providerWrap.hidden = state.orderType !== 'delivery';
       }
@@ -436,24 +449,8 @@ document.addEventListener('DOMContentLoaded', function () {
         paymentWarning.hidden = state.paymentMode !== 'cash';
       }
 
-      if (zoneSelect) {
-        zoneSelect.value = state.deliveryZoneId || '';
-      }
-
       if (providerSelect) {
         providerSelect.value = state.deliveryProvider || '';
-      }
-
-      if (zoneWarning) {
-        var zone = getZoneById(state.deliveryZoneId);
-        var zoneBits = [];
-        if (zone && zone.warning) {
-          zoneBits.push(zone.warning);
-        }
-        if (zone && zone.eta) {
-          zoneBits.push(zone.eta);
-        }
-        zoneWarning.textContent = zoneBits.join(' • ');
       }
 
       renderLocalSummary();
@@ -481,9 +478,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (!state.paymentMode) {
           throw new Error(getText('missingPaymentMode', 'Please choose a payment option.'));
-        }
-        if (state.orderType === 'delivery' && !state.deliveryZoneId) {
-          throw new Error(getText('missingZone', 'Please choose a delivery zone.'));
         }
         if (state.orderType === 'delivery' && !state.deliveryProvider) {
           throw new Error(getText('missingDeliveryProvider', 'Please choose a delivery provider.'));
@@ -532,7 +526,6 @@ document.addEventListener('DOMContentLoaded', function () {
         slot_time: state.slotTime,
         order_type: state.orderType,
         payment_mode: state.paymentMode,
-        delivery_zone_id: state.deliveryZoneId,
         delivery_provider: state.deliveryProvider,
         guests: Math.max(1, toNumber(state.guests, 1)),
         items: getSelectedItemsPayload(),
@@ -561,6 +554,7 @@ document.addEventListener('DOMContentLoaded', function () {
           state.slotTime = '';
         }
 
+        syncOrderTypesBySelectedSlot();
         renderLocalSummary();
       }).catch(function (error) {
         slotResults.innerHTML = '<div class="goody-inline-empty">' + error.message + '</div>';
@@ -655,14 +649,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
       });
 
-      if (zoneSelect) {
-        zoneSelect.addEventListener('change', function () {
-          state.deliveryZoneId = String(zoneSelect.value || '');
-          lastQuoteHtml = '';
-          syncSelectionUI();
-        });
-      }
-
       if (providerSelect) {
         providerSelect.addEventListener('change', function () {
           state.deliveryProvider = String(providerSelect.value || '');
@@ -713,7 +699,8 @@ document.addEventListener('DOMContentLoaded', function () {
           slotButton.classList.toggle('is-selected', slotButton === button);
         });
 
-        renderLocalSummary();
+        syncOrderTypesBySelectedSlot();
+        syncSelectionUI();
       });
     }
 
@@ -750,6 +737,10 @@ document.addEventListener('DOMContentLoaded', function () {
               showMessage('', false);
             });
             return;
+          }
+
+          if (nextStep === 4) {
+            syncOrderTypesBySelectedSlot();
           }
 
           showMessage('', false);

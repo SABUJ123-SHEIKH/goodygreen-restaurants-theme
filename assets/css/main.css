@@ -1111,7 +1111,7 @@ body.goody-direct-order-modal-open {
   border: 1px solid rgba(142, 190, 152, 0.2);
   border-radius: 50%;
   background: rgba(5, 18, 12, 0.8);
-  color: var(--color-text);
+  color: var(--button-text-color);
   font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
@@ -3715,11 +3715,12 @@ body.review-modal-open {
 }
 
 /* Menu item single page refinements */
-.cpt-single--menu-item .cpt-single__crumbs {
+.single .cpt-single--menu-item .cpt-single__crumbs span{
   margin-bottom: 1.25rem;
   gap: 0.42rem;
   font-size: 0.74rem;
-  color: color-mix(in srgb, var(--color-muted) 88%, var(--color-text));
+  color: var(--color-primary)!important;
+  margin: 0;
 }
 
 .cpt-single--menu-item .cpt-single__crumbs strong {
@@ -3789,23 +3790,23 @@ body.review-modal-open {
   gap: 0.45rem;
 }
 
-.cpt-single--menu-item .cpt-single__chips span {
+.single .cpt-single--menu-item .cpt-single__chips span {
   min-height: 32px;
   padding: 0.26rem 0.7rem;
   border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
   background: color-mix(in srgb, var(--color-bg) 78%, transparent);
   font-size: 0.76rem;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-text) 88%, var(--color-muted));
+  color: var(--color-primary)!important;
 }
 
-.cpt-single--menu-item .cpt-single__chips .price {
+.single .cpt-single--menu-item .cpt-single__chips .price {
   min-height: 36px;
   padding: 0.3rem 0.92rem;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-  color: var(--color-primary);
+  color: var(--color-primary)!important;
   font-size: 1.12rem;
   font-weight: 800;
   letter-spacing: 0.01em;
