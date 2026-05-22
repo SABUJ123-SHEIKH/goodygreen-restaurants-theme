@@ -273,14 +273,40 @@ function goody_get_language_code() {
         return $language_code;
     }
 
-    $locale = function_exists('determine_locale') ? determine_locale() : get_locale();
-    $normalized = strtolower(str_replace('-', '_', (string) $locale));
-    $language_code = explode('_', $normalized)[0] ?? 'en';
+    $supported_codes = array_keys(goody_get_language_locale_map());
 
-    if (! in_array($language_code, ['en', 'es', 'ca'], true)) {
-        $language_code = 'en';
+    $selected_code = goody_get_selected_language_code();
+    if ($selected_code !== '' && in_array($selected_code, $supported_codes, true)) {
+        $language_code = $selected_code;
+        return $language_code;
     }
 
+    if (function_exists('pll_current_language')) {
+        $pll_code = sanitize_key((string) pll_current_language('slug'));
+        if ($pll_code !== '' && in_array($pll_code, $supported_codes, true)) {
+            $language_code = $pll_code;
+            return $language_code;
+        }
+    }
+
+    if (has_filter('wpml_current_language')) {
+        $wpml_code = sanitize_key((string) apply_filters('wpml_current_language', null));
+        if ($wpml_code !== '' && in_array($wpml_code, $supported_codes, true)) {
+            $language_code = $wpml_code;
+            return $language_code;
+        }
+    }
+
+    $locale = function_exists('determine_locale') ? determine_locale() : get_locale();
+    $normalized = strtolower(str_replace('-', '_', (string) $locale));
+    $locale_code = sanitize_key((string) (explode('_', $normalized)[0] ?? ''));
+
+    if ($locale_code !== '' && in_array($locale_code, $supported_codes, true)) {
+        $language_code = $locale_code;
+        return $language_code;
+    }
+
+    $language_code = 'en';
     return $language_code;
 }
 

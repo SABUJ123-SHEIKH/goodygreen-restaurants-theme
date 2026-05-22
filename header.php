@@ -134,7 +134,11 @@ if (! empty($language_items)) {
     $language_switcher_markup .= '<select id="goody-language-switcher" class="header-language__select" aria-label="' . esc_attr__('Select language', 'goody') . '" onchange="if(this.value){window.location.href=this.value;}">';
     foreach ($language_items as $item) {
         $selected = ! empty($item['current']) ? ' selected' : '';
-        $language_switcher_markup .= '<option value="' . esc_url((string) $item['url']) . '"' . $selected . '>' . esc_html((string) ($item['flag'] ?? '🌐')) . '</option>';
+        $option_label_parts = [];
+        $option_label_parts[] = trim((string) ($item['flag'] ?? '🌐'));
+        $option_label_parts[] = strtoupper((string) ($item['code'] ?? ''));
+        $option_label = trim(preg_replace('/\s+/', ' ', implode(' ', array_filter($option_label_parts))));
+        $language_switcher_markup .= '<option value="' . esc_url((string) $item['url']) . '"' . $selected . '>' . esc_html($option_label) . '</option>';
     }
     $language_switcher_markup .= '</select>';
 }

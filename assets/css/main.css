@@ -4907,15 +4907,18 @@ body.goody-search-open {
 }
 
 .header-language__select {
-  min-width: 58px;
+  min-width: 40px;
+  max-width: 210px;
   min-height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  padding: 0.1rem 1.35rem 0.1rem 0.7rem;
+  padding: 0.1rem 1.55rem 0.1rem 0.68rem;
   background: rgba(7, 18, 13, 0.58);
   color: #dbf2d5;
-  font-size: 1rem;
-  line-height: 1;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -4923,10 +4926,11 @@ body.goody-search-open {
     linear-gradient(45deg, transparent 50%, rgba(219, 242, 213, 0.9) 50%),
     linear-gradient(135deg, rgba(219, 242, 213, 0.9) 50%, transparent 50%);
   background-position:
-    calc(100% - 14px) calc(50% - 2px),
-    calc(100% - 9px) calc(50% - 2px);
+    calc(100% - 13px) calc(50% - 2px),
+    calc(100% - 8px) calc(50% - 2px);
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
+  text-overflow: ellipsis;
 }
 
 .header-language__select:focus {
@@ -5494,7 +5498,10 @@ background: linear-gradient(101deg, #E9EAE1, rgb(3 11 8 / 83%) 75%, rgb(3 10 8 /
     pointer-events: auto;
   }
 
-  .header-language__select { min-width: 64px; }
+  .header-language__select {
+    min-width: 120px;
+    max-width: 100%;
+  }
 
   .goody-search-modal__form {
     grid-template-columns: 1fr;
