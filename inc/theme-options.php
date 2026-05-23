@@ -873,6 +873,134 @@ function goody_register_settings() {
 }
 add_action('admin_init', 'goody_register_settings');
 
+function goody_get_theme_options_language_from_request() {
+    $raw = '';
+    if (isset($_POST['goody_lang'])) {
+        $raw = (string) wp_unslash($_POST['goody_lang']);
+    } elseif (isset($_GET['goody_lang'])) {
+        $raw = (string) wp_unslash($_GET['goody_lang']);
+    }
+
+    $code = sanitize_key($raw);
+    if ($code === '') {
+        return '';
+    }
+
+    $supported = array_keys(goody_get_language_locale_map());
+    return in_array($code, $supported, true) ? $code : '';
+}
+
+function goody_get_theme_options_localizable_keys() {
+    return [
+        'restaurant_name',
+        'restaurant_tagline',
+        'restaurant_logo_alt',
+        'header_search_placeholder',
+        'hero_heading',
+        'hero_highlight_text',
+        'hero_subheading',
+        'hero_concept_tagline',
+        'hero_primary_text',
+        'hero_secondary_text',
+        'menu_section_title',
+        'menu_section_text',
+        'menu_page_title',
+        'offers_section_title',
+        'offers_section_text',
+        'order_section_title',
+        'order_section_text',
+        'custom_order_text',
+        'tracking_title',
+        'tracking_description',
+        'reservation_section_title',
+        'reservation_section_text',
+        'reservation_page_title',
+        'reservation_button_text',
+        'reservation_status_title',
+        'reservation_status_text',
+        'reservation_success_message',
+        'reservation_booking_notice',
+        'reservation_error_message',
+        'reservation_pickup_warning',
+        'reservation_delivery_warning',
+        'reservation_cash_warning',
+        'reservation_dine_in_note',
+        'reservation_step_counter_prefix',
+        'reservation_step_title_1',
+        'reservation_step_title_2',
+        'reservation_step_title_3',
+        'reservation_step_title_4',
+        'reservation_step_title_5',
+        'reservation_step_title_6',
+        'reservation_order_type_label_dine_in',
+        'reservation_order_type_label_pickup',
+        'reservation_order_type_label_delivery',
+        'reservation_next_button_text',
+        'reservation_back_button_text',
+        'reservation_submit_button_text',
+        'reservation_holiday_message',
+        'about_story_title',
+        'about_story_text',
+        'about_mission_title',
+        'about_mission_text',
+        'about_vision_title',
+        'about_vision_text',
+        'reviews_section_title',
+        'reviews_section_text',
+        'events_section_title',
+        'events_section_text',
+        'news_section_title',
+        'news_eyebrow_text',
+        'news_section_text',
+        'news_button_text',
+        'news_read_more_text',
+        'news_empty_title',
+        'news_empty_text',
+        'account_section_title',
+        'account_eyebrow_text',
+        'account_section_text',
+        'account_placeholder_title',
+        'account_placeholder_text',
+        'account_feature_text_1',
+        'account_feature_text_2',
+        'account_feature_text_3',
+        'account_actions_title',
+        'account_login_button_text',
+        'account_register_button_text',
+        'account_profile_button_text',
+        'account_empty_note_text',
+        'newsletter_title',
+        'newsletter_text',
+        'contact_section_title',
+        'contact_section_text',
+        'contact_address',
+        'contact_whatsapp_button_text',
+        'contact_call_button_text',
+        'footer_quick_title',
+        'footer_legal_title',
+        'footer_copyright',
+        'seo_home_meta_title',
+        'seo_home_meta_description',
+        'seo_local_text',
+    ];
+}
+
+function goody_is_theme_option_localizable_field($field) {
+    $key = (string) ($field['key'] ?? '');
+    $type = (string) ($field['type'] ?? '');
+
+    if ($key === '' || $type === '') {
+        return false;
+    }
+
+    if (! in_array($type, ['text', 'textarea'], true)) {
+        return false;
+    }
+
+    $localizable_keys = goody_get_theme_options_localizable_keys();
+    return in_array($key, $localizable_keys, true);
+}
+
 function goody_handle_theme_options_save() {
     if (! current_user_can('edit_theme_options')) {
         wp_die(esc_html__('You are not allowed to manage these settings.', 'goody'));
@@ -886,6 +1014,36 @@ function goody_handle_theme_options_save() {
     }
 
     $sanitized = goody_sanitize_options(wp_unslash($input));
+
+    $active_lang = goody_get_theme_options_language_from_request();
+    if ($active_lang !== '' && $active_lang !== 'en') {
+        $current = goody_get_options();
+        $fields_by_section = goody_get_settings_fields();
+        $flat_fields = [];
+
+        foreach ($fields_by_section as $fields) {
+            foreach ($fields as $field) {
+                if (! is_array($field) || empty($field['key'])) {
+                    continue;
+                }
+                $flat_fields[(string) $field['key']] = $field;
+            }
+        }
+
+        foreach ($flat_fields as $key => $field) {
+            if (! goody_is_theme_option_localizable_field($field)) {
+                continue;
+            }
+            if (! array_key_exists($key, $input) || ! array_key_exists($key, $sanitized)) {
+                continue;
+            }
+
+            $localized_key = $key . '__' . $active_lang;
+            $sanitized[$localized_key] = $sanitized[$key];
+            $sanitized[$key] = $current[$key] ?? '';
+        }
+    }
+
     update_option('goody_theme_options', $sanitized, false);
 
     $redirect = wp_get_referer();
@@ -1304,6 +1462,9 @@ function goody_render_option_field($field, $options) {
     $label = $field['label'];
     $type = $field['type'];
     $value = $options[$key] ?? '';
+    if (goody_is_theme_option_localizable_field($field)) {
+        $value = goody_get_option($key, (string) $value);
+    }
     $description = $field['description'] ?? '';
 
     $render_attrs = static function ($attrs) {
@@ -1502,6 +1663,7 @@ function goody_render_theme_options_page() {
 
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" novalidate>
             <input type="hidden" name="action" value="goody_save_theme_options">
+            <input type="hidden" name="goody_lang" value="<?php echo esc_attr(goody_get_theme_options_language_from_request()); ?>">
             <?php wp_nonce_field('goody_save_theme_options', 'goody_theme_options_nonce'); ?>
 
             <h2 class="nav-tab-wrapper goody-tab-wrapper">
