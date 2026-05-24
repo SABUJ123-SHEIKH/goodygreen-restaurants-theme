@@ -113,6 +113,7 @@ function goody_default_options() {
         'reservation_free_delivery_threshold' => '0',
         'reservation_disabled_dates' => '',
         'reservation_holiday_message' => 'Booking is not available on this date.',
+        'reservation_tables_layout' => "T1|Table 1|Indoor Window|4\nT2|Table 2|Indoor Center|4\nT3|Table 3|Garden Deck|6\nT4|Table 4|Garden Corner|2\nT5|Table 5|Family Hall|8\nT6|Table 6|Rooftop View|4",
         'reservation_max_bookings_per_day' => '0',
         'reservation_lock_booked_slots' => '1',
         'reservation_enable_dine_in' => '1',

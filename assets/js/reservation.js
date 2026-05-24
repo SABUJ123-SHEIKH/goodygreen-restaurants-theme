@@ -167,6 +167,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var menuItems = toArray(config.menuItems);
     var stepTitles = toArray(config.steps);
     var texts = config.texts || {};
+    var settings = config.settings || {};
     var orderTypes = config.orderTypes || {};
     var paymentModes = config.paymentModes || {};
     var deliveryProviders = config.deliveryProviders || {};
@@ -174,6 +175,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var panels = Array.prototype.slice.call(app.querySelectorAll('[data-step-panel]'));
     var markers = Array.prototype.slice.call(app.querySelectorAll('[data-step-marker]'));
     var slotResults = app.querySelector('[data-slot-results]');
+    var tableResults = app.querySelector('[data-table-results]');
     var liveSummary = app.querySelector('[data-live-summary]');
     var finalSummary = app.querySelector('[data-final-summary]');
     var addressWrap = app.querySelector('[data-address-wrap]');
@@ -193,6 +195,9 @@ document.addEventListener('DOMContentLoaded', function () {
       bookingDayId: '',
       bookingDate: '',
       slotTime: '',
+      tableId: '',
+      tableLabel: '',
+      tableLocation: '',
       orderType: orderTypeKeys[0] || 'dine_in',
       paymentMode: paymentModeKeys[0] || 'full',
       deliveryProvider: '',
@@ -305,6 +310,9 @@ document.addEventListener('DOMContentLoaded', function () {
       if (state.slotTime) {
         lines.push('<p><strong>' + getText('labelSlot', 'Time slot') + ':</strong> ' + state.slotTime + '</p>');
       }
+      if (state.tableLabel) {
+        lines.push('<p><strong>' + getText('labelTable', 'Table') + ':</strong> ' + state.tableLabel + (state.tableLocation ? ' • ' + state.tableLocation : '') + '</p>');
+      }
 
       if (state.orderType) {
         lines.push('<p><strong>' + getText('labelOrderType', 'Order type') + ':</strong> ' + (orderTypes[state.orderType] || state.orderType) + '</p>');
@@ -367,15 +375,25 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       var orderTypeButtons = Array.prototype.slice.call(app.querySelectorAll('[data-order-type]'));
+      var visibleOrderTypes = [];
       orderTypeButtons.forEach(function (button) {
         var typeKey = String(button.getAttribute('data-order-type') || '');
         var isAllowed = !hasRestriction || !!allowedSet[typeKey];
         button.hidden = !isAllowed;
         button.disabled = !isAllowed;
+
+        if (isAllowed && typeKey) {
+          visibleOrderTypes.push(typeKey);
+        }
       });
 
-      if (hasRestriction && !allowedSet[state.orderType]) {
-        state.orderType = allowedTypes[0] || '';
+      if (visibleOrderTypes.length === 0) {
+        state.orderType = '';
+        return;
+      }
+
+      if (!state.orderType || visibleOrderTypes.indexOf(state.orderType) === -1) {
+        state.orderType = visibleOrderTypes[0];
       }
     }
 
@@ -468,6 +486,9 @@ document.addEventListener('DOMContentLoaded', function () {
       if (step === 3 && !state.slotTime) {
         throw new Error(getText('missingSlot', 'Please choose a time slot.'));
       }
+      if (step === 3 && settings.hasTableLayout && !state.tableId) {
+        throw new Error(getText('missingTable', 'Please choose a table.'));
+      }
 
       if (step === 4) {
         if (!state.slotTime) {
@@ -524,6 +545,7 @@ document.addEventListener('DOMContentLoaded', function () {
         booking_day_id: state.bookingDayId,
         booking_date: state.bookingDate,
         slot_time: state.slotTime,
+        table_id: state.tableId,
         order_type: state.orderType,
         payment_mode: state.paymentMode,
         delivery_provider: state.deliveryProvider,
@@ -552,12 +574,55 @@ document.addEventListener('DOMContentLoaded', function () {
         var selectedButton = slotResults.querySelector('[data-slot="' + state.slotTime + '"]');
         if (!selectedButton || selectedButton.disabled) {
           state.slotTime = '';
+          state.tableId = '';
+          state.tableLabel = '';
+          state.tableLocation = '';
         }
 
         syncOrderTypesBySelectedSlot();
         renderLocalSummary();
+        if (state.slotTime) {
+          fetchTables();
+        } else if (tableResults) {
+          tableResults.innerHTML = '<div class="goody-inline-empty">' + getText('missingSlot', 'Please choose a time slot.') + '</div>';
+        }
       }).catch(function (error) {
         slotResults.innerHTML = '<div class="goody-inline-empty">' + error.message + '</div>';
+      });
+    }
+
+    function fetchTables() {
+      if (!tableResults) {
+        return Promise.resolve();
+      }
+      if (!settings.hasTableLayout) {
+        tableResults.innerHTML = '';
+        return Promise.resolve();
+      }
+      if (!state.bookingDayId || !state.bookingDate || !state.slotTime) {
+        tableResults.innerHTML = '<div class="goody-inline-empty">' + getText('missingSlot', 'Please choose a time slot.') + '</div>';
+        return Promise.resolve();
+      }
+
+      return request('goody_reservation_tables', {
+        booking_day_id: state.bookingDayId,
+        booking_date: state.bookingDate,
+        slot_time: state.slotTime,
+        guests: String(Math.max(1, toNumber(state.guests, 1))),
+        selected_table_id: state.tableId || ''
+      }).then(function (data) {
+        tableResults.innerHTML = data.html || '';
+        if (state.tableId) {
+          var selectedTableButton = tableResults.querySelector('[data-table-id="' + state.tableId + '"]');
+          if (!selectedTableButton || selectedTableButton.disabled) {
+            state.tableId = '';
+            state.tableLabel = '';
+            state.tableLocation = '';
+          }
+        }
+        renderLocalSummary();
+      }).catch(function (error) {
+        tableResults.innerHTML = '<div class="goody-inline-empty">' + error.message + '</div>';
       });
     }
 
@@ -587,6 +652,9 @@ document.addEventListener('DOMContentLoaded', function () {
           state.bookingDayId = button.getAttribute('data-booking-day') || '';
           state.bookingDate = button.getAttribute('data-booking-date') || '';
           state.slotTime = '';
+          state.tableId = '';
+          state.tableLabel = '';
+          state.tableLocation = '';
           syncSelectionUI();
           fetchSlots();
         });
@@ -669,6 +737,9 @@ document.addEventListener('DOMContentLoaded', function () {
             lastQuoteHtml = '';
             if (state.bookingDayId) {
               fetchSlots();
+              if (state.slotTime) {
+                fetchTables();
+              }
             } else {
               renderLocalSummary();
             }
@@ -693,6 +764,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         state.slotTime = button.getAttribute('data-slot') || '';
+        state.tableId = '';
+        state.tableLabel = '';
+        state.tableLocation = '';
         lastQuoteHtml = '';
 
         Array.prototype.slice.call(slotResults.querySelectorAll('[data-slot]')).forEach(function (slotButton) {
@@ -701,6 +775,31 @@ document.addEventListener('DOMContentLoaded', function () {
 
         syncOrderTypesBySelectedSlot();
         syncSelectionUI();
+        fetchTables();
+      });
+    }
+
+    function bindTableSelection() {
+      if (!tableResults) {
+        return;
+      }
+
+      tableResults.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-table-id]');
+        if (!button || button.disabled) {
+          return;
+        }
+
+        state.tableId = String(button.getAttribute('data-table-id') || '');
+        state.tableLabel = String(button.getAttribute('data-table-label') || '').trim();
+        state.tableLocation = String(button.getAttribute('data-table-location') || '').trim();
+        lastQuoteHtml = '';
+
+        Array.prototype.slice.call(tableResults.querySelectorAll('[data-table-id]')).forEach(function (tableButton) {
+          tableButton.classList.toggle('is-selected', tableButton === button);
+        });
+
+        renderLocalSummary();
       });
     }
 
@@ -783,10 +882,20 @@ document.addEventListener('DOMContentLoaded', function () {
     bindChoiceCards();
     bindCustomerFields();
     bindSlotSelection();
+    bindTableSelection();
     bindStepButtons();
     bindSubmit();
     syncSelectionUI();
     setStep(1);
+
+    // Auto-pick the first available date so booking can start immediately.
+    var firstAvailableDateButton = app.querySelector('[data-booking-day]:not([disabled])');
+    if (firstAvailableDateButton) {
+      state.bookingDayId = firstAvailableDateButton.getAttribute('data-booking-day') || '';
+      state.bookingDate = firstAvailableDateButton.getAttribute('data-booking-date') || '';
+      syncSelectionUI();
+      fetchSlots();
+    }
   }
 
   function initStatusApp(app) {

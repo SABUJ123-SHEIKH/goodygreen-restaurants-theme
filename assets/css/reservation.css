@@ -485,6 +485,236 @@ background: var(--goody-reservation-accent);
   background: rgba(126, 145, 132, 0.12);
 }
 
+.goody-slot-card.is-available:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--goody-reservation-accent) 26%, var(--goody-reservation-border) 74%);
+}
+
+.goody-slot-card.is-booked:not(.is-selected),
+.goody-slot-card.is-disabled-cutoff:not(.is-selected),
+.goody-slot-card.is-disabled-capacity:not(.is-selected),
+.goody-slot-card.is-disabled-order-type:not(.is-selected) {
+  border-style: dashed;
+}
+
+.goody-slot-card.is-booked .goody-slot-card__state {
+  color: color-mix(in srgb, #c44747 74%, var(--goody-reservation-text) 26%);
+}
+
+.goody-slot-card.is-disabled-cutoff .goody-slot-card__state {
+  color: color-mix(in srgb, #b7772e 74%, var(--goody-reservation-text) 26%);
+}
+
+.goody-slot-card.is-disabled-capacity .goody-slot-card__state,
+.goody-slot-card.is-disabled-order-type .goody-slot-card__state {
+  color: color-mix(in srgb, var(--goody-reservation-muted) 76%, var(--goody-reservation-text) 24%);
+}
+
+.goody-table-card.is-selected {
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--goody-reservation-accent) 24%, transparent);
+}
+
+/* Reference-like dynamic table UI (no layout/schema change) */
+.goody-table-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.goody-slot-results .goody-table-grid {
+  margin-top: 20px;
+}
+.goody-choice-grid, .goody-date-grid, .goody-payment-modes, .goody-slot-grid {
+    gap: 2rem;
+}
+.goody-table-card {
+  position: relative;
+  border-radius: 14px;
+  min-height: 108px;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  background: color-mix(in srgb, #d8dde3 72%, var(--goody-theme-card) 28%);
+  border: 1px solid color-mix(in srgb, #c8d0d8 76%, var(--goody-reservation-border) 24%);
+  box-shadow: none;
+  gap: 0.25rem;
+  isolation: isolate;
+}
+
+/* Dynamic width by capacity (reference-like varying table sizes) */
+.goody-table-card[data-table-capacity="1"],
+.goody-table-card[data-table-capacity="2"] {
+  grid-column: span 1;
+  min-height: 100px;
+}
+
+.goody-table-card[data-table-capacity="3"],
+.goody-table-card[data-table-capacity="4"],
+.goody-table-card[data-table-capacity="5"] {
+  grid-column: span 1;
+  min-height: 108px;
+}
+
+.goody-table-card[data-table-capacity="6"],
+.goody-table-card[data-table-capacity="7"],
+.goody-table-card[data-table-capacity="8"] {
+  grid-column: span 2;
+  min-height: 116px;
+}
+
+.goody-table-card[data-table-capacity="9"],
+.goody-table-card[data-table-capacity="10"],
+.goody-table-card[data-table-capacity="11"],
+.goody-table-card[data-table-capacity="12"] {
+  grid-column: span 3;
+  min-height: 122px;
+}
+
+.goody-table-card .goody-slot-card__time {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, #67727d 74%, var(--goody-reservation-text) 26%);
+  position: relative;
+  z-index: 2;
+}
+
+.goody-table-card .goody-slot-card__meta,
+.goody-table-card .goody-slot-card__state {
+  font-size: 0.72rem;
+  line-height: 1.25;
+  color: color-mix(in srgb, #7f8a95 74%, var(--goody-reservation-muted) 26%);
+  position: relative;
+  z-index: 2;
+}
+
+.goody-table-card .goody-slot-card__state {
+  font-weight: 700;
+}
+
+.goody-table-card::before,
+.goody-table-card::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+  --goody-seat-color: color-mix(in srgb, #cfd6dd 84%, transparent);
+  --goody-seat-thickness: 7px;
+  --goody-seat-gap-min: 2px;
+  --goody-seat-gap-max: 8px;
+  opacity: 0.9;
+}
+
+.goody-table-card::before {
+  --goody-seat-top-step: calc(100% / max(var(--goody-seat-top, 1), 1));
+  --goody-seat-bottom-step: calc(100% / max(var(--goody-seat-bottom, 1), 1));
+  --goody-seat-top-gap: clamp(var(--goody-seat-gap-min), calc(14px - (var(--goody-seat-top, 1) * 1px)), var(--goody-seat-gap-max));
+  --goody-seat-bottom-gap: clamp(var(--goody-seat-gap-min), calc(14px - (var(--goody-seat-bottom, 1) * 1px)), var(--goody-seat-gap-max));
+  left: 12px;
+  right: 12px;
+  top: -11px;
+  bottom: -11px;
+  background:
+    repeating-linear-gradient(
+      to right,
+      var(--goody-seat-color) 0 calc(var(--goody-seat-top-step) - var(--goody-seat-top-gap)),
+      transparent calc(var(--goody-seat-top-step) - var(--goody-seat-top-gap)) var(--goody-seat-top-step)
+    ) top center / 100% var(--goody-seat-thickness) no-repeat,
+    repeating-linear-gradient(
+      to right,
+      var(--goody-seat-color) 0 calc(var(--goody-seat-bottom-step) - var(--goody-seat-bottom-gap)),
+      transparent calc(var(--goody-seat-bottom-step) - var(--goody-seat-bottom-gap)) var(--goody-seat-bottom-step)
+    ) bottom center / 100% var(--goody-seat-thickness) no-repeat;
+}
+
+.goody-table-card::after {
+  --goody-seat-left-step: calc(100% / max(var(--goody-seat-left, 1), 1));
+  --goody-seat-right-step: calc(100% / max(var(--goody-seat-right, 1), 1));
+  --goody-seat-left-gap: clamp(var(--goody-seat-gap-min), calc(14px - (var(--goody-seat-left, 1) * 1px)), var(--goody-seat-gap-max));
+  --goody-seat-right-gap: clamp(var(--goody-seat-gap-min), calc(14px - (var(--goody-seat-right, 1) * 1px)), var(--goody-seat-gap-max));
+  top: 12px;
+  bottom: 12px;
+  left: -11px;
+  right: -11px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      var(--goody-seat-color) 0 calc(var(--goody-seat-left-step) - var(--goody-seat-left-gap)),
+      transparent calc(var(--goody-seat-left-step) - var(--goody-seat-left-gap)) var(--goody-seat-left-step)
+    ) left center / var(--goody-seat-thickness) 100% no-repeat,
+    repeating-linear-gradient(
+      to bottom,
+      var(--goody-seat-color) 0 calc(var(--goody-seat-right-step) - var(--goody-seat-right-gap)),
+      transparent calc(var(--goody-seat-right-step) - var(--goody-seat-right-gap)) var(--goody-seat-right-step)
+    ) right center / var(--goody-seat-thickness) 100% no-repeat;
+}
+
+.goody-table-card.is-selected {
+  background: color-mix(in srgb, #86d7cb 92%, var(--goody-theme-card) 8%);
+  border-color: color-mix(in srgb, #58c6b8 82%, var(--goody-reservation-accent) 18%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #58c6b8 52%, transparent);
+}
+
+.goody-table-card.is-selected::before,
+.goody-table-card.is-selected::after {
+  --goody-seat-color: var(--reservation-accent-color);
+}
+
+.goody-table-card.is-selected .goody-slot-card__time {
+  color: #0f2420;
+}
+
+.goody-table-card.is-selected .goody-slot-card__state {
+  color: #124e47;
+}
+
+.goody-table-card.is-booked,
+.goody-table-card.is-disabled-capacity,
+.goody-table-card.is-disabled-cutoff {
+  background: color-mix(in srgb, #e4e8ed 86%, var(--goody-theme-card) 14%);
+  border-color: color-mix(in srgb, #d2dae2 80%, var(--goody-reservation-border) 20%);
+}
+
+.goody-table-card.is-disabled-cutoff .goody-slot-card__state {
+  color: #9b6a2e;
+}
+
+.goody-table-card.is-booked .goody-slot-card__state {
+  color: #a64a4a;
+}
+
+.goody-table-card.is-disabled-capacity .goody-slot-card__state {
+  color: #7a838d;
+}
+
+.goody-table-card.is-disabled-cutoff::before,
+.goody-table-card.is-booked::before,
+.goody-table-card.is-disabled-capacity::before,
+.goody-table-card.is-disabled-cutoff::after,
+.goody-table-card.is-booked::after,
+.goody-table-card.is-disabled-capacity::after {
+  opacity: 0.58;
+}
+
+@media (max-width: 880px) {
+  .goody-table-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .goody-table-card[data-table-capacity="9"],
+  .goody-table-card[data-table-capacity="10"],
+  .goody-table-card[data-table-capacity="11"],
+  .goody-table-card[data-table-capacity="12"] {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 560px) {
+  .goody-table-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .goody-table-card[data-table-capacity] {
+    grid-column: span 1;
+  }
+}
+
 .goody-booking-menu__filters {
   display: flex;
   flex-wrap: wrap;

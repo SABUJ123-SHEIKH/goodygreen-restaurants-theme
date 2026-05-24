@@ -448,6 +448,7 @@ function goody_get_settings_fields() {
             ],
             ['key' => 'reservation_disabled_dates', 'label' => __('Disabled Dates', 'goody'), 'type' => 'textarea', 'description' => __('Enter one date per line in YYYY-MM-DD format.', 'goody')],
             ['key' => 'reservation_holiday_message', 'label' => __('Holiday / Off-day Message', 'goody'), 'type' => 'textarea'],
+            ['key' => 'reservation_tables_layout', 'label' => __('Table Layout', 'goody'), 'type' => 'textarea', 'description' => __('One table per line: table_id|label|location|capacity. Example: T1|Table 1|Indoor Window|4', 'goody')],
             ['key' => 'reservation_max_bookings_per_day', 'label' => __('Max Booking Per Day', 'goody'), 'type' => 'number'],
             ['key' => 'reservation_lock_booked_slots', 'label' => __('Disable Reserved Date + Time Slots', 'goody'), 'type' => 'checkbox', 'description' => __('When enabled, a date and time slot becomes unavailable after one non-cancelled reservation is created.', 'goody')],
             ['key' => 'reservation_enable_dine_in', 'label' => __('Enable Dine In', 'goody'), 'type' => 'checkbox'],
