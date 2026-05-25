@@ -82,9 +82,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  function validateFlowBeforeQuote(validateStep) {
+  function validateFlowBeforeQuote(validateStep, shouldValidateMenu) {
     validateStep(1);
-    validateStep(2);
+    if (shouldValidateMenu) {
+      validateStep(2);
+    }
     validateStep(3);
     validateStep(4);
     validateStep(5);
@@ -190,6 +192,20 @@ document.addEventListener('DOMContentLoaded', function () {
     var progressFill = app.querySelector('[data-progress-fill]');
     var orderTypeKeys = Object.keys(orderTypes);
     var paymentModeKeys = Object.keys(paymentModes);
+    var deliveryProviderKeys = Object.keys(deliveryProviders);
+    var defaultDeliveryProvider = String(settings.defaultDeliveryProvider || '').trim();
+    if (!defaultDeliveryProvider || !Object.prototype.hasOwnProperty.call(deliveryProviders, defaultDeliveryProvider)) {
+      defaultDeliveryProvider = deliveryProviderKeys[0] || '';
+    }
+    var menuStepEnabled = settings.menuStepEnabled !== false;
+    var visibleStepNumbers = markers.map(function (marker) {
+      return Number(marker.getAttribute('data-step-marker'));
+    }).filter(function (step) {
+      return Number.isFinite(step) && step > 0;
+    }).sort(function (a, b) {
+      return a - b;
+    });
+    var totalVisibleSteps = visibleStepNumbers.length || 1;
     var state = {
       step: 1,
       bookingDayId: '',
@@ -200,11 +216,12 @@ document.addEventListener('DOMContentLoaded', function () {
       tableLocation: '',
       orderType: orderTypeKeys[0] || 'dine_in',
       paymentMode: paymentModeKeys[0] || 'full',
-      deliveryProvider: '',
+      deliveryProvider: defaultDeliveryProvider,
       guests: 1,
       customer: {
         name: '',
         phone: '',
+        email: '',
         address: '',
         note: ''
       },
@@ -411,7 +428,8 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       if (stepCounter) {
-        stepCounter.textContent = getText('stepCounterPrefix', 'Step') + ' ' + step + '/6';
+        var visibleIndex = Math.max(1, visibleStepNumbers.indexOf(step) + 1);
+        stepCounter.textContent = getText('stepCounterPrefix', 'Step') + ' ' + visibleIndex + '/' + totalVisibleSteps;
       }
 
       if (currentStepTitle) {
@@ -419,7 +437,9 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       if (progressFill) {
-        progressFill.style.width = String(((step - 1) / 5) * 100) + '%';
+        var progressSteps = Math.max(1, totalVisibleSteps - 1);
+        var stepIndex = Math.max(0, visibleStepNumbers.indexOf(step));
+        progressFill.style.width = String((stepIndex / progressSteps) * 100) + '%';
       }
     }
 
@@ -447,7 +467,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var button = card.querySelector('[data-select-item]');
         if (button && !card.classList.contains('is-disabled')) {
-          button.textContent = isSelected ? getText('updateItem', 'Update selection') : getText('selectItem', 'Add to order');
+          if (!button.classList.contains('menu-card__order')) {
+            button.textContent = isSelected ? getText('updateItem', 'Update selection') : getText('selectItem', 'Add to order');
+          } else {
+            var orderIcon = button.querySelector('.menu-card__order-icon');
+            if (orderIcon) {
+              orderIcon.textContent = isSelected ? '✓' : '+';
+            }
+          }
         }
       });
 
@@ -479,7 +506,7 @@ document.addEventListener('DOMContentLoaded', function () {
         throw new Error(getText('missingDate', 'Please choose a date first.'));
       }
 
-      if (step === 2 && !getSelectedItemsPayload().length) {
+      if (menuStepEnabled && step === 2 && !getSelectedItemsPayload().length) {
         throw new Error(getText('missingItem', 'Please add at least one menu item.'));
       }
 
@@ -508,6 +535,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (step === 5) {
         var nameInput = app.querySelector('[data-customer-field="name"]');
         var phoneInput = app.querySelector('[data-customer-field="phone"]');
+        var emailInput = app.querySelector('[data-customer-field="email"]');
         var addressInput = app.querySelector('[data-customer-field="address"]');
 
         if ((fieldSettings.name && fieldSettings.name.required) && (!nameInput || !String(nameInput.value || '').trim())) {
@@ -516,6 +544,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if ((fieldSettings.phone && fieldSettings.phone.required) && (!phoneInput || !String(phoneInput.value || '').trim())) {
           throw new Error(getText('missingPhone', 'Please enter your phone number.'));
+        }
+
+        if (emailInput) {
+          var emailValue = String(emailInput.value || '').trim();
+          if (emailValue !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+            throw new Error(getText('invalidEmail', 'Please enter a valid email address.'));
+          }
         }
 
         if (state.orderType === 'delivery' && (!addressInput || !String(addressInput.value || '').trim())) {
@@ -811,7 +846,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
           try {
             if (nextStep === 6) {
-              validateFlowBeforeQuote(validateStep);
+              validateFlowBeforeQuote(validateStep, menuStepEnabled);
             } else {
               validateStep(currentStep);
             }

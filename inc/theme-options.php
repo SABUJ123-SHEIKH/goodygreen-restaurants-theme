@@ -266,7 +266,7 @@ function goody_get_settings_fields() {
                 'key' => 'reservation_delivery_providers',
                 'label' => __('WooCommerce Delivery Providers (Custom)', 'goody'),
                 'type' => 'textarea',
-                'description' => __('WooCommerce provider list only. One provider per line using key|Label. Example: goody|Goody', 'goody'),
+                'description' => __('WooCommerce provider list only. One provider per line using key|Label|enabled. Example: goody|Goody|1 or uber|UberEats|0', 'goody'),
             ],
             [
                 'key' => 'reservation_default_delivery_provider',
@@ -454,6 +454,7 @@ function goody_get_settings_fields() {
             ['key' => 'reservation_enable_dine_in', 'label' => __('Enable Dine In', 'goody'), 'type' => 'checkbox'],
             ['key' => 'reservation_enable_pickup', 'label' => __('Enable Pickup', 'goody'), 'type' => 'checkbox'],
             ['key' => 'reservation_enable_delivery', 'label' => __('Enable Delivery', 'goody'), 'type' => 'checkbox'],
+            ['key' => 'reservation_enable_menu_step', 'label' => __('Enable Menu Step', 'goody'), 'type' => 'checkbox'],
             ['key' => 'reservation_min_order_dine_in', 'label' => __('Minimum Order for Dine In', 'goody'), 'type' => 'number'],
             ['key' => 'reservation_min_order_pickup', 'label' => __('Minimum Order for Pickup', 'goody'), 'type' => 'number'],
             ['key' => 'reservation_min_order_delivery', 'label' => __('Minimum Order for Delivery', 'goody'), 'type' => 'number'],

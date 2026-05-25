@@ -94,8 +94,38 @@ if (! empty($meta_items)) {
     $details_popup_lines[] = implode(' | ', array_values(array_filter(array_map('sanitize_text_field', $meta_items))));
 }
 $details_popup_lines = array_slice(array_values(array_unique($details_popup_lines)), 0, 3);
+$category_ids_attr = '';
+if (! is_wp_error($category_terms) && ! empty($category_terms)) {
+    $category_ids_attr = implode(',', array_map('absint', wp_list_pluck($category_terms, 'term_id')));
+}
+$reservation_context = is_array($GLOBALS['goody_reservation_menu_context'] ?? null) ? $GLOBALS['goody_reservation_menu_context'] : [];
+$reservation_enabled = ! empty($reservation_context['enabled']);
+$reservation_item = ($reservation_enabled && ! empty($reservation_context['items'][$item_id]) && is_array($reservation_context['items'][$item_id]))
+    ? $reservation_context['items'][$item_id]
+    : null;
+if (is_array($reservation_item)) {
+    $available = ! empty($reservation_item['available']) ? '1' : '0';
+    $price = (string) ($reservation_item['price'] ?? $price);
+}
+$reservation_is_disabled = $available !== '1';
+$reservation_qty_display = 1;
+$reservation_qty_label = __('Quantity', 'goody');
+if (is_array($reservation_item)) {
+    $reservation_qty_display = (float) ($reservation_item['min_qty'] ?? 1);
+    if ($reservation_qty_display <= 0) {
+        $reservation_qty_display = 1;
+    }
+    $reservation_qty_label = (($reservation_item['unit_type'] ?? '') === 'kg') ? __('KG', 'goody') : __('Quantity', 'goody');
+}
+$card_classes = 'card menu-card' . ($reservation_is_disabled ? ' is-disabled' : '');
+if ($reservation_enabled) {
+    $card_classes .= ' goody-booking-card';
+}
 ?>
-<article <?php post_class('card menu-card'); ?> data-available="<?php echo esc_attr($available); ?>">
+<article <?php post_class($card_classes); ?> data-available="<?php echo esc_attr($available); ?>" data-menu-item-id="<?php echo esc_attr((string) $item_id); ?>" data-category-ids="<?php echo esc_attr($category_ids_attr); ?>">
+    <?php if ($reservation_enabled) : ?>
+        <span class="goody-booking-card__check" aria-hidden="true">✓</span>
+    <?php endif; ?>
     <div class="menu-card__visual">
         <?php if ($badge_label !== '') : ?>
             <span class="badge menu-card__flag"><?php echo esc_html($badge_label); ?></span>
@@ -125,7 +155,24 @@ $details_popup_lines = array_slice(array_values(array_unique($details_popup_line
             </div>
 
             <div class="menu-card__actions">
-                <?php if ($available === '1') : ?>
+                <?php if ($reservation_enabled && is_array($reservation_item)) : ?>
+                    <input
+                        type="hidden"
+                        value="<?php echo esc_attr((string) $reservation_qty_display); ?>"
+                        data-qty-for="<?php echo esc_attr((string) $item_id); ?>"
+                    >
+                    <button
+                        type="button"
+                        class="goody-item-select button menu-card__order"
+                        data-select-item="<?php echo esc_attr((string) $item_id); ?>"
+                        <?php echo $reservation_is_disabled ? 'disabled' : ''; ?>
+                        aria-label="<?php echo esc_attr($reservation_is_disabled ? __('Unavailable', 'goody') : __('Add to order', 'goody')); ?>"
+                        title="<?php echo esc_attr($reservation_is_disabled ? __('Unavailable', 'goody') : __('Add to order', 'goody')); ?>"
+                    >
+                        <span class="menu-card__order-icon" aria-hidden="true">+</span>
+                        <span class="screen-reader-text"><?php echo esc_html($reservation_is_disabled ? __('Unavailable', 'goody') : __('Add to order', 'goody')); ?></span>
+                    </button>
+                <?php elseif ($available === '1') : ?>
                     <?php if ($direct_order_product_id > 0) : ?>
                         <button
                             type="button"
@@ -166,6 +213,18 @@ $details_popup_lines = array_slice(array_values(array_unique($details_popup_line
                 </a>
             </div>
         </div>
+
+        <?php if ($reservation_enabled && is_array($reservation_item) && ! empty($reservation_item['addons']) && is_array($reservation_item['addons'])) : ?>
+            <div class="goody-booking-card__addons">
+                <?php foreach ($reservation_item['addons'] as $addon) : ?>
+                    <label>
+                        <input type="checkbox" value="<?php echo esc_attr((string) ($addon['key'] ?? '')); ?>" data-addon-for="<?php echo esc_attr((string) $item_id); ?>">
+                        <span><?php echo esc_html((string) ($addon['name'] ?? '')); ?></span>
+                        <small><?php echo goody_reservation_price_html((float) ($addon['price'] ?? 0)); ?></small>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
 
         <?php if (! empty($meta_items)) : ?>
             <div class="menu-card__meta">

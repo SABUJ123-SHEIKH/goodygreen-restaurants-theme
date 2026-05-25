@@ -1,16 +1,49 @@
 jQuery(function ($) {
   const tabWrapper = $('.goody-tab-wrapper');
+  const tabPanels = $('.goody-tab-panel');
+
+  function activateTab(targetId, updateHash) {
+    if (!targetId || !tabWrapper.length) {
+      return false;
+    }
+
+    const targetTab = tabWrapper.find('.nav-tab[href="' + targetId + '"]');
+    const targetPanel = $(targetId);
+    if (!targetTab.length || !targetPanel.length) {
+      return false;
+    }
+
+    tabWrapper.find('.nav-tab').removeClass('nav-tab-active');
+    targetTab.addClass('nav-tab-active');
+
+    tabPanels.hide();
+    targetPanel.show();
+
+    if (updateHash) {
+      if (window.history && typeof window.history.replaceState === 'function') {
+        window.history.replaceState(null, '', targetId);
+      } else {
+        window.location.hash = targetId;
+      }
+    }
+
+    return true;
+  }
+
   if (tabWrapper.length) {
     tabWrapper.on('click', '.nav-tab', function (e) {
       e.preventDefault();
       const target = $(this).attr('href');
-
-      tabWrapper.find('.nav-tab').removeClass('nav-tab-active');
-      $(this).addClass('nav-tab-active');
-
-      $('.goody-tab-panel').hide();
-      $(target).show();
+      activateTab(target, true);
     });
+
+    const initialHash = String(window.location.hash || '').trim();
+    if (initialHash && !activateTab(initialHash, false)) {
+      const firstTab = tabWrapper.find('.nav-tab').first().attr('href');
+      if (firstTab) {
+        activateTab(firstTab, false);
+      }
+    }
   }
 
   function getControllerValue(fieldId) {

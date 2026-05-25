@@ -288,6 +288,10 @@ function goody_get_reservation_step_titles() {
     ];
 }
 
+function goody_is_reservation_menu_step_enabled() {
+    return goody_get_option('reservation_enable_menu_step', '1') === '1';
+}
+
 function goody_get_reservation_step_counter_prefix() {
     $defaults = goody_get_reservation_step_defaults();
     return goody_get_reservation_localized_option('reservation_step_counter_prefix', $defaults['step_counter_prefix']);
@@ -377,6 +381,10 @@ function goody_get_reservation_customer_field_settings() {
             'required' => goody_get_option('reservation_customer_guests_required', '1') === '1',
             'enabled' => true,
         ],
+        'email' => [
+            'required' => false,
+            'enabled' => true,
+        ],
         'address' => [
             'required' => goody_get_option('reservation_customer_address_required', '1') === '1',
             'enabled' => goody_get_option('reservation_customer_address_enabled', '1') === '1',
@@ -389,9 +397,64 @@ function goody_get_reservation_customer_field_settings() {
 }
 
 function goody_get_reservation_delivery_provider_choices() {
-    return [
+    $defaults = [
         'goody' => 'Goody',
     ];
+
+    $raw = (string) goody_get_option('reservation_delivery_providers', '');
+    if ($raw === '') {
+        return $defaults;
+    }
+
+    $choices = [];
+    $lines = preg_split('/\r\n|\r|\n/', $raw);
+    if (! is_array($lines)) {
+        return $defaults;
+    }
+
+    foreach ($lines as $line) {
+        $line = trim((string) $line);
+        if ($line === '') {
+            continue;
+        }
+
+        $parts = array_map('trim', explode('|', $line));
+        if (count($parts) === 1 && strpos($parts[0], ',') !== false) {
+            $parts = array_map('trim', explode(',', $parts[0]));
+        }
+
+        $provider_key = sanitize_key((string) ($parts[0] ?? ''));
+        if ($provider_key === '') {
+            continue;
+        }
+
+        $provider_label = sanitize_text_field((string) ($parts[1] ?? ''));
+        if ($provider_label === '') {
+            $provider_label = ucwords(str_replace(['-', '_'], ' ', $provider_key));
+        }
+
+        // Optional third value supports admin-side enable/disable control.
+        $enabled_raw = strtolower(trim((string) ($parts[2] ?? '1')));
+        $is_enabled = ! in_array($enabled_raw, ['0', 'false', 'no', 'off', 'disabled'], true);
+        if (! $is_enabled) {
+            continue;
+        }
+
+        $choices[$provider_key] = $provider_label;
+    }
+
+    return ! empty($choices) ? $choices : $defaults;
+}
+
+function goody_get_reservation_default_delivery_provider() {
+    $choices = goody_get_reservation_delivery_provider_choices();
+    $default_key = sanitize_key((string) goody_get_option('reservation_default_delivery_provider', ''));
+    if ($default_key !== '' && isset($choices[$default_key])) {
+        return $default_key;
+    }
+
+    $keys = array_keys($choices);
+    return (string) ($keys[0] ?? 'goody');
 }
 
 function goody_sanitize_reservation_delivery_provider($provider) {
@@ -1867,7 +1930,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
     $payment_mode = sanitize_key((string) ($payload['payment_mode'] ?? 'full'));
     $delivery_provider = goody_sanitize_reservation_delivery_provider($payload['delivery_provider'] ?? '');
     if ($delivery_provider === '') {
-        $delivery_provider = 'goody';
+        $delivery_provider = goody_get_reservation_default_delivery_provider();
     }
     $guests = max(1, absint($payload['guests'] ?? 1));
     $items_payload = goody_normalize_reservation_item_payload($payload['items'] ?? []);
@@ -1876,6 +1939,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
     $address = sanitize_textarea_field((string) ($customer['address'] ?? ''));
     $customer_name = sanitize_text_field((string) ($customer['name'] ?? ''));
     $customer_phone = sanitize_text_field((string) ($customer['phone'] ?? ''));
+    $customer_email = sanitize_email((string) ($customer['email'] ?? ''));
 
     if ($booking_day_id < 1 || get_post_type($booking_day_id) !== 'goody_booking_day') {
         return new WP_Error('invalid_day', __('Please select a booking date.', 'goody'));
@@ -1904,7 +1968,8 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
     }
     $booking_day_date = $selected_booking_date;
 
-    if (empty($items_payload)) {
+    $menu_step_enabled = goody_is_reservation_menu_step_enabled();
+    if ($menu_step_enabled && empty($items_payload)) {
         return new WP_Error('no_items', __('Please add at least one menu item.', 'goody'));
     }
 
@@ -2125,7 +2190,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         'delivery' => (float) goody_get_option('reservation_min_order_delivery', '0'),
     ];
     $type_minimum = $type_minimums[$order_type] ?? 0;
-    if ($type_minimum > 0 && $subtotal < $type_minimum) {
+    if ($menu_step_enabled && $type_minimum > 0 && $subtotal < $type_minimum) {
         return new WP_Error('type_minimum', sprintf(
             /* translators: %s is a formatted minimum order amount. */
             __('Minimum order amount is %s for the selected order type.', 'goody'),
@@ -2146,6 +2211,9 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         }
         if ($phone_validation['valid']) {
             $customer_phone = $phone_validation['normalized'];
+        }
+        if ($customer_email !== '' && ! is_email($customer_email)) {
+            return new WP_Error('invalid_email', __('Please enter a valid email address.', 'goody'));
         }
 
         if (
@@ -2203,6 +2271,7 @@ function goody_prepare_reservation_quote($payload, $require_customer = false) {
         'customer' => [
             'name' => $customer_name,
             'phone' => $customer_phone,
+            'email' => $customer_email,
             'address' => $address,
             'note' => $notes,
         ],
@@ -2293,6 +2362,7 @@ function goody_create_reservation_post($quote) {
     update_post_meta($reservation_id, 'goody_capacity_kg_used', (string) $quote['capacity_kg']);
     update_post_meta($reservation_id, 'goody_reservation_name', sanitize_text_field((string) $quote['customer']['name']));
     update_post_meta($reservation_id, 'goody_reservation_phone', sanitize_text_field((string) $quote['customer']['phone']));
+    update_post_meta($reservation_id, 'goody_reservation_email', sanitize_email((string) ($quote['customer']['email'] ?? '')));
     update_post_meta($reservation_id, 'goody_reservation_address', sanitize_textarea_field((string) $quote['customer']['address']));
     update_post_meta($reservation_id, 'goody_reservation_note', sanitize_textarea_field((string) $quote['customer']['note']));
     update_post_meta($reservation_id, 'goody_reservation_subtotal', (string) $quote['subtotal']);
@@ -2405,6 +2475,7 @@ function goody_create_woocommerce_order_from_reservation($reservation_id, $quote
     $order->set_customer_note((string) ($quote['customer']['note'] ?? ''));
     $order->set_billing_first_name(sanitize_text_field((string) ($quote['customer']['name'] ?? '')));
     $order->set_billing_phone(sanitize_text_field((string) ($quote['customer']['phone'] ?? '')));
+    $order->set_billing_email(sanitize_email((string) ($quote['customer']['email'] ?? '')));
     $order->set_billing_address_1(sanitize_text_field((string) ($quote['customer']['address'] ?? '')));
     $order->set_shipping_first_name(sanitize_text_field((string) ($quote['customer']['name'] ?? '')));
     $order->set_shipping_phone(sanitize_text_field((string) ($quote['customer']['phone'] ?? '')));
@@ -2450,6 +2521,27 @@ function goody_create_woocommerce_order_from_reservation($reservation_id, $quote
     return $order;
 }
 
+function goody_maybe_sync_reservation_customer_to_mailchimp($quote) {
+    if (! is_array($quote) || ! function_exists('goody_mailchimp_upsert_subscriber')) {
+        return;
+    }
+
+    $customer = is_array($quote['customer'] ?? null) ? $quote['customer'] : [];
+    $email = sanitize_email((string) ($customer['email'] ?? ''));
+    if (! is_email($email)) {
+        return;
+    }
+
+    goody_mailchimp_upsert_subscriber($email, [
+        'merge_fields' => [
+            'FNAME' => sanitize_text_field((string) ($customer['name'] ?? '')),
+            'PHONE' => sanitize_text_field((string) ($customer['phone'] ?? '')),
+        ],
+        'tags' => ['Reservation'],
+        'status' => 'subscribed',
+    ]);
+}
+
 function goody_maybe_create_reservation_after_payment($order_id) {
     $order_id = absint($order_id);
     if ($order_id < 1 || ! function_exists('wc_get_order')) {
@@ -2480,6 +2572,7 @@ function goody_maybe_create_reservation_after_payment($order_id) {
     if (is_wp_error($reservation_id)) {
         return;
     }
+    goody_maybe_sync_reservation_customer_to_mailchimp($quote);
 
     update_post_meta($reservation_id, 'goody_wc_order_id', (string) $order_id);
     update_post_meta($reservation_id, 'goody_reservation_payment_status', sanitize_text_field((string) $order->get_status()));
@@ -2596,6 +2689,7 @@ function goody_ajax_reservation_submit() {
                 'message' => $reservation_id->get_error_message(),
             ], 500);
         }
+        goody_maybe_sync_reservation_customer_to_mailchimp($quote);
 
         $order = null;
         if ($should_create_wc_order) {
@@ -2870,6 +2964,7 @@ function goody_build_reservation_frontend_config() {
     $order_types = goody_get_enabled_reservation_order_types();
     $payment_modes = goody_get_enabled_reservation_payment_modes();
     $table_layout = goody_get_reservation_table_layout();
+    $menu_step_enabled = goody_is_reservation_menu_step_enabled();
     $contact_phone = sanitize_text_field((string) goody_get_option('contact_phone', ''));
     $whatsapp_number = preg_replace('/\D+/', '', (string) goody_get_option('contact_whatsapp_number', ''));
 
@@ -2905,6 +3000,7 @@ function goody_build_reservation_frontend_config() {
             'missingDeliveryProvider' => __('Please choose a delivery provider.', 'goody'),
             'missingName' => __('Please enter your name.', 'goody'),
             'missingPhone' => __('Please enter your phone number.', 'goody'),
+            'invalidEmail' => __('Please enter a valid email address.', 'goody'),
             'missingAddress' => __('Please enter the delivery address.', 'goody'),
             'statusCurrent' => __('Current status:', 'goody'),
             'labelDate' => __('Date', 'goody'),
@@ -2920,8 +3016,9 @@ function goody_build_reservation_frontend_config() {
         ],
         'settings' => [
             'depositPercentage' => goody_get_reservation_deposit_percentage(),
-            'defaultDeliveryProvider' => 'goody',
+            'defaultDeliveryProvider' => goody_get_reservation_default_delivery_provider(),
             'hasTableLayout' => ! empty($table_layout),
+            'menuStepEnabled' => $menu_step_enabled,
         ],
         'todayHours' => [
             'day' => $today_hours['day'] ?? '',
@@ -2939,6 +3036,66 @@ function goody_build_reservation_frontend_config() {
 }
 
 function goody_render_reservation_menu_cards($menu_items, $categories = [], $show_direct_order = false) {
+    if ($show_direct_order) {
+        $menu_item_ids = array_values(array_unique(array_filter(array_map(
+            static function ($item) {
+                return absint(is_array($item) ? ($item['id'] ?? 0) : 0);
+            },
+            $menu_items
+        ))));
+
+        ob_start();
+        ?>
+        <div class="goody-booking-menu" data-goody-menu-filter-app>
+            <div class="goody-booking-menu__filters" role="tablist" aria-label="<?php esc_attr_e('Menu categories', 'goody'); ?>">
+                <button type="button" class="goody-filter-pill is-active" data-menu-filter="all" role="tab" aria-selected="true"><?php esc_html_e('All', 'goody'); ?></button>
+                <?php foreach ($categories as $category) : ?>
+                    <button type="button" class="goody-filter-pill" data-menu-filter="<?php echo esc_attr((string) $category['id']); ?>" role="tab" aria-selected="false">
+                        <?php if (! empty($category['icon'])) : ?>
+                            <img src="<?php echo esc_url($category['icon']); ?>" alt="" loading="lazy">
+                        <?php endif; ?>
+                        <span><?php echo esc_html($category['name']); ?></span>
+                    </button>
+                <?php endforeach; ?>
+            </div>
+
+            <?php
+            if (! empty($menu_item_ids)) {
+                $menu_query = new WP_Query([
+                    'post_type' => 'menu_item',
+                    'post_status' => 'publish',
+                    'post__in' => $menu_item_ids,
+                    'orderby' => 'post__in',
+                    'posts_per_page' => count($menu_item_ids),
+                    'ignore_sticky_posts' => true,
+                    'no_found_rows' => true,
+                ]);
+
+                echo goody_render_menu_items_markup($menu_query);
+            } else {
+                echo '<div class="card empty-state"><h3>' . esc_html__('No menu items found', 'goody') . '</h3><p>' . esc_html__('Try changing filters or add more dishes from Dashboard → Menu Items.', 'goody') . '</p></div>';
+            }
+            ?>
+        </div>
+        <?php
+
+        return ob_get_clean();
+    }
+
+    $menu_item_ids = array_values(array_unique(array_filter(array_map(
+        static function ($item) {
+            return absint(is_array($item) ? ($item['id'] ?? 0) : 0);
+        },
+        $menu_items
+    ))));
+    $reservation_items_map = [];
+    foreach ($menu_items as $item) {
+        if (! is_array($item) || empty($item['id'])) {
+            continue;
+        }
+        $reservation_items_map[absint($item['id'])] = $item;
+    }
+
     ob_start();
     ?>
     <div class="goody-booking-menu" data-goody-menu-filter-app>
@@ -2954,103 +3111,36 @@ function goody_render_reservation_menu_cards($menu_items, $categories = [], $sho
             <?php endforeach; ?>
         </div>
 
-        <div class="goody-booking-menu__grid">
-            <?php foreach ($menu_items as $item) : ?>
-                <?php
-                $data_categories = implode(',', array_map('absint', $item['category_ids']));
-                $is_disabled = ! $item['available'] || ($item['track_stock'] && $item['remaining_qty'] !== null && $item['remaining_qty'] <= 0);
-                $qty_display = $item['min_qty'] > 0 ? $item['min_qty'] : 1;
-                $badge_text = $item['badge'] !== '' ? $item['badge'] : ($item['featured'] ? __('Featured', 'goody') : '');
-                $qty_label = $item['unit_type'] === 'kg' ? __('KG', 'goody') : __('Quantity', 'goody');
-                $direct_order = $show_direct_order ? goody_get_menu_item_direct_order_data((int) $item['id']) : ['product_id' => 0, 'qty' => 1];
-                $direct_order_product_id = ! empty($direct_order['product_id']) ? (int) $direct_order['product_id'] : 0;
-                $direct_order_qty = ! empty($direct_order['qty']) ? (int) $direct_order['qty'] : $qty_display;
-                $direct_order_price = wp_strip_all_tags(goody_reservation_price_html($item['price']));
-                ?>
-                <article class="goody-booking-card<?php echo $is_disabled ? ' is-disabled' : ''; ?>" data-menu-item-id="<?php echo esc_attr((string) $item['id']); ?>" data-category-ids="<?php echo esc_attr($data_categories); ?>">
-                    <?php if ($badge_text !== '') : ?>
-                        <span class="goody-booking-card__badge"><?php echo esc_html($badge_text); ?></span>
-                    <?php endif; ?>
-                    <span class="goody-booking-card__check" aria-hidden="true">✓</span>
-                    <div class="goody-booking-card__media">
-                        <?php if ($item['image'] !== '') : ?>
-                            <img src="<?php echo esc_url($item['image']); ?>" alt="<?php echo esc_attr($item['name']); ?>" loading="lazy">
-                        <?php else : ?>
-                            <div class="goody-booking-card__placeholder"><?php esc_html_e('Menu', 'goody'); ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="goody-booking-card__body">
-                        <div class="goody-booking-card__head">
-                            <div>
-                                <h4><a href="<?php echo esc_url(get_permalink((int) $item['id'])); ?>"><?php echo esc_html($item['name']); ?></a></h4>
-                                <?php if (! goody_is_bengali_context() && $item['bn_name'] !== '') : ?>
-                                    <p class="goody-booking-card__subhead"><?php echo esc_html($item['bn_name']); ?></p>
-                                <?php endif; ?>
-                            </div>
-                            <strong><?php echo goody_reservation_price_html($item['price']); ?></strong>
-                        </div>
-                        <?php if ($item['description'] !== '') : ?>
-                            <p><?php echo esc_html($item['description']); ?></p>
-                        <?php endif; ?>
-                        <div class="goody-booking-card__meta">
-                            <span><?php echo esc_html($item['unit_label']); ?></span>
-                            <?php if ($item['track_stock'] && $item['remaining_qty'] !== null) : ?>
-                                <span><?php echo esc_html(sprintf(__('Stock left: %s', 'goody'), rtrim(rtrim(number_format($item['remaining_qty'], 2, '.', ''), '0'), '.'))); ?></span>
-                            <?php endif; ?>
-                        </div>
+        <?php
+        if (! empty($menu_item_ids)) {
+            $menu_query = new WP_Query([
+                'post_type' => 'menu_item',
+                'post_status' => 'publish',
+                'post__in' => $menu_item_ids,
+                'orderby' => 'post__in',
+                'posts_per_page' => count($menu_item_ids),
+                'ignore_sticky_posts' => true,
+                'no_found_rows' => true,
+            ]);
 
-                        <?php if (! empty($item['addons'])) : ?>
-                            <div class="goody-booking-card__addons">
-                                <?php foreach ($item['addons'] as $addon) : ?>
-                                    <label>
-                                        <input type="checkbox" value="<?php echo esc_attr($addon['key']); ?>" data-addon-for="<?php echo esc_attr((string) $item['id']); ?>">
-                                        <span><?php echo esc_html($addon['name']); ?></span>
-                                        <small><?php echo goody_reservation_price_html($addon['price']); ?></small>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-
-                        <div class="goody-booking-card__actions">
-                            <?php if ($show_direct_order && $direct_order_product_id > 0 && ! $is_disabled) : ?>
-                                <button
-                                    type="button"
-                                    class="goody-item-select goody-direct-order-button"
-                                    data-goody-direct-order-open
-                                    data-goody-direct-order-target="goody-reservation-menu-order-modal"
-                                    data-product-id="<?php echo esc_attr((string) $direct_order_product_id); ?>"
-                                    data-quantity="<?php echo esc_attr((string) $direct_order_qty); ?>"
-                                    data-min-quantity="<?php echo esc_attr((string) max(0.1, (float) $item['min_qty'])); ?>"
-                                    <?php if ((float) $item['max_qty'] > 0) : ?>data-max-quantity="<?php echo esc_attr((string) $item['max_qty']); ?>"<?php endif; ?>
-                                    data-step-quantity="<?php echo esc_attr((string) max(0.1, (float) $item['step_qty'])); ?>"
-                                    data-title="<?php echo esc_attr($item['name']); ?>"
-                                    data-price="<?php echo esc_attr($direct_order_price); ?>"
-                                    data-image="<?php echo esc_url($item['image']); ?>"
-                                >
-                                    <?php esc_html_e('Order now', 'goody'); ?>
-                                </button>
-                            <?php else : ?>
-                                <label class="goody-qty-control">
-                                    <span><?php echo esc_html($qty_label); ?></span>
-                                    <input
-                                        type="number"
-                                        min="<?php echo esc_attr((string) max(0.1, $item['min_qty'])); ?>"
-                                        <?php if ((float) $item['max_qty'] > 0) : ?>max="<?php echo esc_attr((string) $item['max_qty']); ?>"<?php endif; ?>
-                                        step="<?php echo esc_attr((string) max(0.1, $item['step_qty'])); ?>"
-                                        value="<?php echo esc_attr((string) $qty_display); ?>"
-                                        data-qty-for="<?php echo esc_attr((string) $item['id']); ?>"
-                                        <?php echo $is_disabled ? 'disabled' : ''; ?>
-                                    >
-                                </label>
-                                <button type="button" class="goody-item-select" data-select-item="<?php echo esc_attr((string) $item['id']); ?>" <?php echo $is_disabled ? 'disabled' : ''; ?>>
-                                    <?php echo $is_disabled ? esc_html__('Unavailable', 'goody') : esc_html__('Add to order', 'goody'); ?>
-                                </button>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </article>
-            <?php endforeach; ?>
-        </div>
+            $GLOBALS['goody_reservation_menu_context'] = [
+                'enabled' => true,
+                'show_direct_order' => false,
+                'items' => $reservation_items_map,
+            ];
+            $reservation_menu_html = (string) goody_render_menu_items_markup($menu_query);
+            $reservation_menu_html = preg_replace(
+                '/class="archive-grid archive-grid--three"/',
+                'class="goody-booking-menu__grid archive-grid archive-grid--three"',
+                $reservation_menu_html,
+                1
+            );
+            echo $reservation_menu_html;
+            unset($GLOBALS['goody_reservation_menu_context']);
+        } else {
+            echo '<div class="card empty-state"><h3>' . esc_html__('No menu items found', 'goody') . '</h3><p>' . esc_html__('Try changing filters or add more dishes from Dashboard → Menu Items.', 'goody') . '</p></div>';
+        }
+        ?>
     </div>
     <?php
 
@@ -3115,6 +3205,22 @@ function goody_render_reservation_booking_shortcode($atts = []) {
     $default_dine_in_note = $config['texts']['dineInNote'];
     $booking_notice = $config['texts']['bookingNotice'];
     $step_titles = goody_get_reservation_step_titles();
+    $menu_step_enabled = goody_is_reservation_menu_step_enabled();
+    $step_titles_display = $step_titles;
+    if (! $menu_step_enabled && isset($step_titles_display[2])) {
+        unset($step_titles_display[2]);
+    }
+    $step_numbers = array_values(array_keys($step_titles_display));
+    $step_display_numbers = [];
+    foreach ($step_numbers as $display_index => $step_number) {
+        $step_display_numbers[(int) $step_number] = $display_index + 1;
+    }
+    $first_step_number = ! empty($step_numbers) ? (int) $step_numbers[0] : 1;
+    $first_step_title = $step_titles_display[$first_step_number] ?? ($step_titles[1] ?? __('Date', 'goody'));
+    $first_step_display_number = (int) ($step_display_numbers[$first_step_number] ?? 1);
+    $total_steps = max(1, count($step_numbers));
+    $step1_next = $menu_step_enabled ? 2 : 3;
+    $step3_prev = $menu_step_enabled ? 2 : 1;
     $order_types = $config['orderTypes'];
     $payment_modes = $config['paymentModes'];
     $delivery_providers = $config['deliveryProviders'];
@@ -3136,10 +3242,10 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                 <p><?php echo esc_html($booking_notice); ?></p>
             </div>
 
-            <div class="goody-reservation-progress">
+                <div class="goody-reservation-progress">
                 <div class="goody-reservation-progress__meta">
-                    <strong class="goody-step-counter" data-step-counter><?php echo esc_html(goody_get_reservation_step_counter_prefix() . ' 1/6'); ?></strong>
-                    <span class="goody-step-title-current" data-current-step-title><?php echo esc_html($step_titles[1] ?? __('Date', 'goody')); ?></span>
+                    <strong class="goody-step-counter" data-step-counter><?php echo esc_html(goody_get_reservation_step_counter_prefix() . ' ' . $first_step_display_number . '/' . $total_steps); ?></strong>
+                    <span class="goody-step-title-current" data-current-step-title><?php echo esc_html($first_step_title); ?></span>
                 </div>
                 <div class="goody-reservation-progress__track" aria-hidden="true">
                     <span class="goody-reservation-progress__fill" data-progress-fill></span>
@@ -3147,8 +3253,8 @@ function goody_render_reservation_booking_shortcode($atts = []) {
             </div>
 
             <ol class="goody-reservation-steps" aria-label="<?php esc_attr_e('Booking steps', 'goody'); ?>">
-                <?php foreach ($step_titles as $step_number => $step_title) : ?>
-                    <li class="<?php echo $step_number === 1 ? 'is-active' : ''; ?>" data-step-marker="<?php echo esc_attr((string) $step_number); ?>"><span><?php echo esc_html((string) $step_number); ?></span><strong><?php echo esc_html($step_title); ?></strong></li>
+                <?php foreach ($step_titles_display as $step_number => $step_title) : ?>
+                    <li class="<?php echo $step_number === $first_step_number ? 'is-active' : ''; ?>" data-step-marker="<?php echo esc_attr((string) $step_number); ?>"><span><?php echo esc_html((string) ($step_display_numbers[(int) $step_number] ?? $step_number)); ?></span><strong><?php echo esc_html($step_title); ?></strong></li>
                 <?php endforeach; ?>
             </ol>
 
@@ -3157,7 +3263,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
             <div class="goody-reservation-layout">
                 <div class="goody-reservation-panels">
                     <section class="goody-reservation-panel is-active" data-step-panel="1">
-                        <h3><?php echo esc_html(sprintf('%s 1: %s', goody_get_reservation_step_counter_prefix(), $step_titles[1] ?? __('Date', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s %d: %s', goody_get_reservation_step_counter_prefix(), (int) ($step_display_numbers[1] ?? 1), $step_titles[1] ?? __('Date', 'goody'))); ?></h3>
                         <div class="goody-date-grid">
                             <?php foreach ($calendar_days as $day) : ?>
                                 <button type="button" class="goody-date-card<?php echo $day['disabled'] ? ' is-disabled' : ''; ?>" data-booking-day="<?php echo esc_attr((string) $day['id']); ?>" data-booking-date="<?php echo esc_attr((string) $day['date']); ?>" <?php echo $day['disabled'] ? 'disabled' : ''; ?>>
@@ -3171,12 +3277,12 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                             <div class="goody-inline-empty"><?php esc_html_e('No booking dates are configured yet. Add them from Goody Green > Booking Dates.', 'goody'); ?></div>
                         <?php endif; ?>
                         <div class="goody-panel-actions">
-                            <button type="button" class="button goody-step-next" data-next-step="2"><?php echo esc_html($next_text); ?></button>
+                            <button type="button" class="button goody-step-next" data-next-step="<?php echo esc_attr((string) $step1_next); ?>"><?php echo esc_html($next_text); ?></button>
                         </div>
                     </section>
 
-                    <section class="goody-reservation-panel" data-step-panel="2">
-                        <h3><?php echo esc_html(sprintf('%s 2: %s', goody_get_reservation_step_counter_prefix(), $step_titles[2] ?? __('Menu', 'goody'))); ?></h3>
+                    <section class="goody-reservation-panel<?php echo ! $menu_step_enabled ? ' is-hidden' : ''; ?>" data-step-panel="2" <?php echo ! $menu_step_enabled ? 'hidden aria-hidden="true"' : ''; ?>>
+                        <h3><?php echo esc_html(sprintf('%s %d: %s', goody_get_reservation_step_counter_prefix(), (int) ($step_display_numbers[2] ?? 2), $step_titles[2] ?? __('Menu', 'goody'))); ?></h3>
                         <?php echo $menu_markup; ?>
                         <div class="goody-panel-actions">
                             <button type="button" class="button button--ghost goody-step-prev" data-prev-step="1"><?php echo esc_html($back_text); ?></button>
@@ -3185,21 +3291,21 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="3">
-                        <h3><?php echo esc_html(sprintf('%s 3: %s', goody_get_reservation_step_counter_prefix(), $step_titles[3] ?? __('Time', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s %d: %s', goody_get_reservation_step_counter_prefix(), (int) ($step_display_numbers[3] ?? 3), $step_titles[3] ?? __('Time', 'goody'))); ?></h3>
                         <div data-slot-results class="goody-slot-results">
-                            <div class="goody-inline-empty"><?php esc_html_e('Select a date and menu items first to see the live time slots.', 'goody'); ?></div>
+                            <div class="goody-inline-empty"><?php echo esc_html($menu_step_enabled ? __('Select a date and menu items first to see the live time slots.', 'goody') : __('Select a date first to see the live time slots.', 'goody')); ?></div>
                         </div>
                         <div data-table-results class="goody-slot-results">
                             <div class="goody-inline-empty"><?php esc_html_e('Select a slot to see available tables and locations.', 'goody'); ?></div>
                         </div>
                         <div class="goody-panel-actions">
-                            <button type="button" class="button button--ghost goody-step-prev" data-prev-step="2"><?php echo esc_html($back_text); ?></button>
+                            <button type="button" class="button button--ghost goody-step-prev" data-prev-step="<?php echo esc_attr((string) $step3_prev); ?>"><?php echo esc_html($back_text); ?></button>
                             <button type="button" class="button goody-step-next" data-next-step="4"><?php echo esc_html($next_text); ?></button>
                         </div>
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="4">
-                        <h3><?php echo esc_html(sprintf('%s 4: %s', goody_get_reservation_step_counter_prefix(), $step_titles[4] ?? __('Order Type', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s %d: %s', goody_get_reservation_step_counter_prefix(), (int) ($step_display_numbers[4] ?? 4), $step_titles[4] ?? __('Order Type', 'goody'))); ?></h3>
                         <div class="goody-choice-grid">
                             <?php foreach ($order_types as $type_key => $type_label) : ?>
                                 <button type="button" class="goody-choice-card" data-order-type="<?php echo esc_attr($type_key); ?>"><?php echo goody_render_reservation_choice_label_with_icon($type_label, 'order_type', $type_key); ?></button>
@@ -3235,7 +3341,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="5">
-                        <h3><?php echo esc_html(sprintf('%s 5: %s', goody_get_reservation_step_counter_prefix(), $step_titles[5] ?? __('Information', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s %d: %s', goody_get_reservation_step_counter_prefix(), (int) ($step_display_numbers[5] ?? 5), $step_titles[5] ?? __('Information', 'goody'))); ?></h3>
                         <div class="goody-form-grid">
                             <label>
                                 <span><?php esc_html_e('Name', 'goody'); ?><?php echo ($field_settings['name']['required'] ?? false) ? ' *' : ''; ?></span>
@@ -3244,6 +3350,10 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                             <label>
                                 <span><?php esc_html_e('Phone', 'goody'); ?><?php echo ($field_settings['phone']['required'] ?? false) ? ' *' : ''; ?></span>
                                 <input type="text" inputmode="tel" data-customer-field="phone" placeholder="<?php esc_attr_e('01XXXXXXXXX', 'goody'); ?>">
+                            </label>
+                            <label>
+                                <span><?php esc_html_e('Email (optional)', 'goody'); ?></span>
+                                <input type="email" inputmode="email" data-customer-field="email" placeholder="<?php esc_attr_e('you@example.com', 'goody'); ?>">
                             </label>
                             <label>
                                 <span><?php esc_html_e('Guests / Persons', 'goody'); ?><?php echo ($field_settings['guests']['required'] ?? false) ? ' *' : ''; ?></span>
@@ -3267,7 +3377,7 @@ function goody_render_reservation_booking_shortcode($atts = []) {
                     </section>
 
                     <section class="goody-reservation-panel" data-step-panel="6">
-                        <h3><?php echo esc_html(sprintf('%s 6: %s', goody_get_reservation_step_counter_prefix(), $step_titles[6] ?? __('Summary', 'goody'))); ?></h3>
+                        <h3><?php echo esc_html(sprintf('%s %d: %s', goody_get_reservation_step_counter_prefix(), (int) ($step_display_numbers[6] ?? 6), $step_titles[6] ?? __('Summary', 'goody'))); ?></h3>
                         <div data-final-summary></div>
                         <div class="goody-panel-actions">
                             <button type="button" class="button button--ghost goody-step-prev" data-prev-step="5"><?php echo esc_html($back_text); ?></button>
@@ -3346,7 +3456,7 @@ function goody_render_reservation_menu_shortcode($atts = []) {
             <?php echo goody_render_reservation_menu_cards($config['menuItems'], $config['categories'], true); ?>
             <?php
             echo goody_render_direct_order_modal([
-                'id' => 'goody-reservation-menu-order-modal',
+                'id' => 'goody-menu-order-modal',
                 'title' => __('Choose your delivery provider', 'goody'),
                 'eyebrow' => __('Direct checkout', 'goody'),
                 'button_text' => __('Checkout', 'goody'),

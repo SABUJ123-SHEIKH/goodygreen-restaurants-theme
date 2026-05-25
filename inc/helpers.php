@@ -1597,7 +1597,7 @@ function goody_is_woocommerce_available() {
 }
 
 function goody_get_delivery_provider_choices() {
-    return [
+    $defaults = [
         'restaurant_delivery' => __('Restaurant Delivery', 'goody'),
         'pickup' => __('Pickup', 'goody'),
         'foodpanda' => __('Foodpanda', 'goody'),
@@ -1607,6 +1607,50 @@ function goody_get_delivery_provider_choices() {
         'glovo' => __('Glovo', 'goody'),
         'deliveroo' => __('Deliveroo', 'goody'),
     ];
+
+    $raw = trim((string) goody_get_option('reservation_delivery_providers', ''));
+    if ($raw === '') {
+        return $defaults;
+    }
+
+    $choices = [];
+    $lines = preg_split('/\r\n|\r|\n/', $raw);
+    if (! is_array($lines)) {
+        return $defaults;
+    }
+
+    foreach ($lines as $line) {
+        $line = trim((string) $line);
+        if ($line === '') {
+            continue;
+        }
+
+        $parts = array_map('trim', explode('|', $line));
+        if (count($parts) === 1 && strpos($parts[0], ',') !== false) {
+            $parts = array_map('trim', explode(',', $parts[0]));
+        }
+
+        $provider_key = sanitize_key((string) ($parts[0] ?? ''));
+        if ($provider_key === '') {
+            continue;
+        }
+
+        $provider_label = sanitize_text_field((string) ($parts[1] ?? ''));
+        if ($provider_label === '') {
+            $provider_label = ucwords(str_replace(['-', '_'], ' ', $provider_key));
+        }
+
+        $enabled_raw = strtolower(trim((string) ($parts[2] ?? '1')));
+        $is_enabled = ! in_array($enabled_raw, ['0', 'false', 'no', 'off', 'disabled'], true);
+        if (! $is_enabled) {
+            continue;
+        }
+
+        $choices[$provider_key] = $provider_label;
+    }
+
+    // Keep legacy/system providers available if custom list is empty/invalid.
+    return ! empty($choices) ? $choices : $defaults;
 }
 
 function goody_sanitize_delivery_provider($provider) {
